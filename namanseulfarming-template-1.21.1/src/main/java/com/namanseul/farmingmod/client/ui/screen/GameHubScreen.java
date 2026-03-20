@@ -24,6 +24,7 @@ public final class GameHubScreen extends BaseGameScreen {
 
     private static final int MENU_BUTTON_HEIGHT = 22;
     private static final int MENU_BUTTON_GAP = 8;
+    private static final String HUB_MENU_ERROR_MESSAGE = "Unable to open hub menu.";
 
     private final Map<String, HubTabView> menuViews = new LinkedHashMap<>();
     private final Map<String, Button> menuButtons = new LinkedHashMap<>();
@@ -80,11 +81,8 @@ public final class GameHubScreen extends BaseGameScreen {
     }
 
     public void handleServerResponse(UiResponsePayload payload) {
-        if (!payload.success()) {
-            String message = payload.error() == null || payload.error().isBlank()
-                    ? "Unable to open hub menu."
-                    : payload.error();
-            setError(message);
+        if (payload == null || !payload.success()) {
+            setError(HUB_MENU_ERROR_MESSAGE);
             return;
         }
 
