@@ -1,0 +1,3307 @@
+수정한 파일 목록
+- src/main/java/com/namanseul/farmingmod/network/UiScreenType.java
+- src/main/java/com/namanseul/farmingmod/network/UiAction.java
+- src/main/java/com/namanseul/farmingmod/network/payload/UiResponsePayload.java
+- src/main/java/com/namanseul/farmingmod/network/ModNetwork.java
+- src/main/java/com/namanseul/farmingmod/client/network/UiClientNetworking.java
+- src/main/java/com/namanseul/farmingmod/client/network/ClientUiResponseDispatcher.java
+- src/main/java/com/namanseul/farmingmod/server/player/BackendPlayerBridge.java
+- src/main/java/com/namanseul/farmingmod/server/player/PlayerActivityTracker.java
+- src/main/java/com/namanseul/farmingmod/server/player/PlayerOverviewUiService.java
+- src/main/java/com/namanseul/farmingmod/network/UiServerPayloadHandlers.java
+- src/main/java/com/namanseul/farmingmod/client/ui/tab/PlayerTabView.java
+- src/main/java/com/namanseul/farmingmod/client/ui/screen/GameHubScreen.java
+- src/main/java/com/namanseul/farmingmod/client/ui/player/PlayerOverviewData.java
+- src/main/java/com/namanseul/farmingmod/client/ui/player/PlayerOverviewParser.java
+- src/main/java/com/namanseul/farmingmod/client/ui/player/PlayerOverviewFormatter.java
+- src/main/java/com/namanseul/farmingmod/client/ui/screen/PlayerOverviewScreen.java
+- src/main/resources/assets/namanseulfarming/lang/en_us.json
+
+\n\n### src/main/java/com/namanseul/farmingmod/network/UiScreenType.java
+```java
+package com.namanseul.farmingmod.network;
+
+public enum UiScreenType {
+    HUB,
+    SHOP,
+    MAIL,
+    INVEST,
+    STATUS,
+    PLAYER;
+
+    public String serialized() {
+        return name().toLowerCase();
+    }
+
+    public static UiScreenType fromSerialized(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return HUB;
+        }
+
+        for (UiScreenType screenType : values()) {
+            if (screenType.serialized().equalsIgnoreCase(raw)) {
+                return screenType;
+            }
+        }
+        return HUB;
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/network/UiAction.java
+```java
+package com.namanseul.farmingmod.network;
+
+public enum UiAction {
+    OPEN,
+    INIT,
+    SUMMARY,
+    REFRESH,
+    SHOP_LIST,
+    SHOP_DETAIL,
+    SHOP_PREVIEW_BUY,
+    SHOP_PREVIEW_SELL,
+    SHOP_BUY,
+    SHOP_SELL,
+    INVEST_LIST,
+    INVEST_DETAIL,
+    INVEST_PROGRESS,
+    INVEST_CONTRIBUTE,
+    INVEST_REFRESH,
+    STATUS_OVERVIEW,
+    STATUS_REFRESH,
+    PLAYER_OVERVIEW,
+    PLAYER_WALLET,
+    PLAYER_ACTIVITY,
+    PLAYER_SUMMARY,
+    PLAYER_REFRESH,
+    MAIL_LIST,
+    MAIL_DETAIL,
+    MAIL_CLAIM,
+    MAIL_REFRESH;
+
+    public String serialized() {
+        return name().toLowerCase();
+    }
+
+    public static UiAction fromSerialized(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return SUMMARY;
+        }
+
+        for (UiAction action : values()) {
+            if (action.serialized().equalsIgnoreCase(raw)) {
+                return action;
+            }
+        }
+        return SUMMARY;
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/network/payload/UiResponsePayload.java
+```java
+package com.namanseul.farmingmod.network.payload;
+
+import com.namanseul.farmingmod.NamanseulFarming;
+import com.namanseul.farmingmod.network.UiAction;
+import com.namanseul.farmingmod.network.UiScreenType;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+
+public record UiResponsePayload(
+        String requestId,
+        boolean success,
+        UiScreenType screenType,
+        UiAction action,
+        HubSummaryData data,
+        String dataJson,
+        String error
+) implements CustomPacketPayload {
+    public static final Type<UiResponsePayload> TYPE = new Type<>(
+            ResourceLocation.fromNamespaceAndPath(NamanseulFarming.MODID, "ui_response")
+    );
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, UiResponsePayload> STREAM_CODEC = new StreamCodec<>() {
+        @Override
+        public UiResponsePayload decode(RegistryFriendlyByteBuf buffer) {
+            String requestId = buffer.readUtf();
+            boolean success = buffer.readBoolean();
+            UiScreenType screenType = UiScreenType.fromSerialized(buffer.readUtf());
+            UiAction action = UiAction.fromSerialized(buffer.readUtf());
+
+            HubSummaryData data = null;
+            if (buffer.readBoolean()) {
+                data = HubSummaryData.STREAM_CODEC.decode(buffer);
+            }
+
+            String dataJson = null;
+            if (buffer.readBoolean()) {
+                dataJson = buffer.readUtf();
+            }
+
+            String error = null;
+            if (buffer.readBoolean()) {
+                error = buffer.readUtf();
+            }
+
+            return new UiResponsePayload(requestId, success, screenType, action, data, dataJson, error);
+        }
+
+        @Override
+        public void encode(RegistryFriendlyByteBuf buffer, UiResponsePayload value) {
+            buffer.writeUtf(value.requestId);
+            buffer.writeBoolean(value.success);
+            buffer.writeUtf(value.screenType.serialized());
+            buffer.writeUtf(value.action.serialized());
+
+            buffer.writeBoolean(value.data != null);
+            if (value.data != null) {
+                HubSummaryData.STREAM_CODEC.encode(buffer, value.data);
+            }
+
+            buffer.writeBoolean(value.dataJson != null && !value.dataJson.isBlank());
+            if (value.dataJson != null && !value.dataJson.isBlank()) {
+                buffer.writeUtf(value.dataJson);
+            }
+
+            buffer.writeBoolean(value.error != null && !value.error.isBlank());
+            if (value.error != null && !value.error.isBlank()) {
+                buffer.writeUtf(value.error);
+            }
+        }
+    };
+
+    public static UiResponsePayload openHub(String requestId) {
+        return new UiResponsePayload(requestId, true, UiScreenType.HUB, UiAction.OPEN, null, null, null);
+    }
+
+    public static UiResponsePayload openShop(String requestId) {
+        return new UiResponsePayload(requestId, true, UiScreenType.SHOP, UiAction.OPEN, null, null, null);
+    }
+
+    public static UiResponsePayload openMail(String requestId) {
+        return new UiResponsePayload(requestId, true, UiScreenType.MAIL, UiAction.OPEN, null, null, null);
+    }
+
+    public static UiResponsePayload openInvest(String requestId) {
+        return new UiResponsePayload(requestId, true, UiScreenType.INVEST, UiAction.OPEN, null, null, null);
+    }
+
+    public static UiResponsePayload openStatus(String requestId) {
+        return new UiResponsePayload(requestId, true, UiScreenType.STATUS, UiAction.OPEN, null, null, null);
+    }
+
+    public static UiResponsePayload openPlayer(String requestId) {
+        return new UiResponsePayload(requestId, true, UiScreenType.PLAYER, UiAction.OPEN, null, null, null);
+    }
+
+    public static UiResponsePayload successSummary(String requestId, UiAction action, HubSummaryData data) {
+        return new UiResponsePayload(requestId, true, UiScreenType.HUB, action, data, null, null);
+    }
+
+    public static UiResponsePayload successJson(
+            String requestId,
+            UiScreenType screenType,
+            UiAction action,
+            String dataJson
+    ) {
+        return new UiResponsePayload(requestId, true, screenType, action, null, dataJson, null);
+    }
+
+    public static UiResponsePayload failed(String requestId, UiScreenType screenType, UiAction action, String error) {
+        return new UiResponsePayload(requestId, false, screenType, action, null, null, error);
+    }
+
+    @Override
+    public Type<UiResponsePayload> type() {
+        return TYPE;
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/network/ModNetwork.java
+```java
+package com.namanseul.farmingmod.network;
+
+import com.namanseul.farmingmod.Config;
+import com.namanseul.farmingmod.NamanseulFarming;
+import com.namanseul.farmingmod.network.payload.UiRequestPayload;
+import com.namanseul.farmingmod.network.payload.UiResponsePayload;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+
+public final class ModNetwork {
+    private static final String PROTOCOL_VERSION = "6";
+
+    private ModNetwork() {}
+
+    public static void registerPayloads(RegisterPayloadHandlersEvent event) {
+        PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
+
+        registrar.playToServer(
+                UiRequestPayload.TYPE,
+                UiRequestPayload.STREAM_CODEC,
+                UiServerPayloadHandlers::handleRequest
+        );
+
+        registrar.playToClient(
+                UiResponsePayload.TYPE,
+                UiResponsePayload.STREAM_CODEC,
+                ModNetwork::handleResponseOnClient
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info("[UI] Payloads registered with protocol version {}", PROTOCOL_VERSION);
+        }
+    }
+
+    private static void handleResponseOnClient(UiResponsePayload payload, IPayloadContext context) {
+        UiPayloadBridge.dispatchClientResponse(payload, context);
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/network/UiClientNetworking.java
+```java
+package com.namanseul.farmingmod.client.network;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.namanseul.farmingmod.Config;
+import com.namanseul.farmingmod.NamanseulFarming;
+import com.namanseul.farmingmod.network.UiAction;
+import com.namanseul.farmingmod.network.UiScreenType;
+import com.namanseul.farmingmod.network.payload.UiRequestPayload;
+import java.util.UUID;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+public final class UiClientNetworking {
+    private static final Gson GSON = new Gson();
+
+    private UiClientNetworking() {}
+
+    public static String requestHub(UiAction action) {
+        return send(UiScreenType.HUB, action, null);
+    }
+
+    public static String requestShopList(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.SHOP, UiAction.SHOP_LIST, payload);
+    }
+
+    public static String requestShopDetail(String itemId, boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("itemId", itemId);
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.SHOP, UiAction.SHOP_DETAIL, payload);
+    }
+
+    public static String requestShopPreviewBuy(String itemId, int quantity) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("itemId", itemId);
+        payload.addProperty("quantity", quantity);
+        return send(UiScreenType.SHOP, UiAction.SHOP_PREVIEW_BUY, payload);
+    }
+
+    public static String requestShopPreviewSell(String itemId, int quantity) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("itemId", itemId);
+        payload.addProperty("quantity", quantity);
+        return send(UiScreenType.SHOP, UiAction.SHOP_PREVIEW_SELL, payload);
+    }
+
+    public static String requestShopBuy(String itemId, int quantity) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("itemId", itemId);
+        payload.addProperty("quantity", quantity);
+        return send(UiScreenType.SHOP, UiAction.SHOP_BUY, payload);
+    }
+
+    public static String requestShopSell(String itemId, int quantity) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("itemId", itemId);
+        payload.addProperty("quantity", quantity);
+        return send(UiScreenType.SHOP, UiAction.SHOP_SELL, payload);
+    }
+
+    public static String requestMailList(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.MAIL, UiAction.MAIL_LIST, payload);
+    }
+
+    public static String requestMailRefresh() {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", true);
+        return send(UiScreenType.MAIL, UiAction.MAIL_REFRESH, payload);
+    }
+
+    public static String requestMailDetail(String mailId, boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("mailId", mailId);
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.MAIL, UiAction.MAIL_DETAIL, payload);
+    }
+
+    public static String requestMailClaim(String mailId) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("mailId", mailId);
+        return send(UiScreenType.MAIL, UiAction.MAIL_CLAIM, payload);
+    }
+
+    public static String requestInvestList(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.INVEST, UiAction.INVEST_LIST, payload);
+    }
+
+    public static String requestInvestRefresh() {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", true);
+        return send(UiScreenType.INVEST, UiAction.INVEST_REFRESH, payload);
+    }
+
+    public static String requestInvestDetail(String projectId, boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("projectId", projectId);
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.INVEST, UiAction.INVEST_DETAIL, payload);
+    }
+
+    public static String requestInvestProgress(String projectId, boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("projectId", projectId);
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.INVEST, UiAction.INVEST_PROGRESS, payload);
+    }
+
+    public static String requestInvestContribute(String projectId, int amount) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("projectId", projectId);
+        payload.addProperty("amount", amount);
+        return send(UiScreenType.INVEST, UiAction.INVEST_CONTRIBUTE, payload);
+    }
+
+    public static String requestStatusOverview(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.STATUS, UiAction.STATUS_OVERVIEW, payload);
+    }
+
+    public static String requestStatusRefresh() {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", true);
+        return send(UiScreenType.STATUS, UiAction.STATUS_REFRESH, payload);
+    }
+
+    public static String requestPlayerOverview(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.PLAYER, UiAction.PLAYER_OVERVIEW, payload);
+    }
+
+    public static String requestPlayerWallet(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.PLAYER, UiAction.PLAYER_WALLET, payload);
+    }
+
+    public static String requestPlayerActivity(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.PLAYER, UiAction.PLAYER_ACTIVITY, payload);
+    }
+
+    public static String requestPlayerSummary(boolean forceRefresh) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", forceRefresh);
+        return send(UiScreenType.PLAYER, UiAction.PLAYER_SUMMARY, payload);
+    }
+
+    public static String requestPlayerRefresh() {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("forceRefresh", true);
+        return send(UiScreenType.PLAYER, UiAction.PLAYER_REFRESH, payload);
+    }
+
+    private static String send(UiScreenType screenType, UiAction action, JsonObject payloadJson) {
+        String requestId = UUID.randomUUID().toString();
+        String encodedPayload = payloadJson == null ? null : GSON.toJson(payloadJson);
+        UiRequestPayload payload = new UiRequestPayload(requestId, screenType, action, encodedPayload);
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] send request C->S id={} screen={} action={}",
+                    requestId,
+                    screenType.serialized(),
+                    action.serialized()
+            );
+        }
+        PacketDistributor.sendToServer(payload);
+        return requestId;
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/network/ClientUiResponseDispatcher.java
+```java
+package com.namanseul.farmingmod.client.network;
+
+import com.namanseul.farmingmod.Config;
+import com.namanseul.farmingmod.NamanseulFarming;
+import com.namanseul.farmingmod.client.ui.screen.MailScreen;
+import com.namanseul.farmingmod.client.ui.screen.ShopScreen;
+import com.namanseul.farmingmod.client.ui.screen.InvestScreen;
+import com.namanseul.farmingmod.client.ui.screen.GameHubScreen;
+import com.namanseul.farmingmod.client.ui.screen.PlayerOverviewScreen;
+import com.namanseul.farmingmod.client.ui.screen.StatusScreen;
+import com.namanseul.farmingmod.network.UiAction;
+import com.namanseul.farmingmod.network.UiScreenType;
+import com.namanseul.farmingmod.network.payload.UiResponsePayload;
+import net.minecraft.client.Minecraft;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+
+public final class ClientUiResponseDispatcher {
+    private ClientUiResponseDispatcher() {}
+
+    public static void handle(UiResponsePayload payload, IPayloadContext context) {
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.execute(() -> {
+            if (Config.networkDebugLog()) {
+                NamanseulFarming.LOGGER.info("[UI] recv response S->C id={} success={} action={} screen={}",
+                        payload.requestId(), payload.success(), payload.action().serialized(), payload.screenType().serialized());
+            }
+
+            if (payload.screenType() == UiScreenType.HUB) {
+                handleHub(payload, minecraft);
+                return;
+            }
+
+            if (payload.screenType() == UiScreenType.SHOP) {
+                handleShop(payload, minecraft);
+                return;
+            }
+
+            if (payload.screenType() == UiScreenType.MAIL) {
+                handleMail(payload, minecraft);
+                return;
+            }
+
+            if (payload.screenType() == UiScreenType.INVEST) {
+                handleInvest(payload, minecraft);
+                return;
+            }
+
+            if (payload.screenType() == UiScreenType.STATUS) {
+                handleStatus(payload, minecraft);
+                return;
+            }
+
+            if (payload.screenType() == UiScreenType.PLAYER) {
+                handlePlayer(payload, minecraft);
+            }
+        });
+    }
+
+    private static void handleHub(UiResponsePayload payload, Minecraft minecraft) {
+        if (payload.action() == UiAction.OPEN) {
+            GameHubScreen.openFromCommand();
+            return;
+        }
+
+        if (minecraft.screen instanceof GameHubScreen hubScreen) {
+            hubScreen.handleServerResponse(payload);
+            return;
+        }
+
+        if (payload.success() && payload.data() != null) {
+            GameHubScreen autoOpened = new GameHubScreen();
+            minecraft.setScreen(autoOpened);
+            autoOpened.handleServerResponse(payload);
+        }
+    }
+
+    private static void handleShop(UiResponsePayload payload, Minecraft minecraft) {
+        if (payload.action() == UiAction.OPEN) {
+            ShopScreen.openStandalone();
+            return;
+        }
+
+        if (minecraft.screen instanceof ShopScreen shopScreen) {
+            shopScreen.handleServerResponse(payload);
+            return;
+        }
+
+        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+            ShopScreen autoOpened = ShopScreen.openStandalone();
+            autoOpened.handleServerResponse(payload);
+        }
+    }
+
+    private static void handleMail(UiResponsePayload payload, Minecraft minecraft) {
+        if (payload.action() == UiAction.OPEN) {
+            MailScreen.openStandalone();
+            return;
+        }
+
+        if (minecraft.screen instanceof MailScreen mailScreen) {
+            mailScreen.handleServerResponse(payload);
+            return;
+        }
+
+        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+            MailScreen autoOpened = MailScreen.openStandalone();
+            autoOpened.handleServerResponse(payload);
+        }
+    }
+
+    private static void handleInvest(UiResponsePayload payload, Minecraft minecraft) {
+        if (payload.action() == UiAction.OPEN) {
+            InvestScreen.openStandalone();
+            return;
+        }
+
+        if (minecraft.screen instanceof InvestScreen investScreen) {
+            investScreen.handleServerResponse(payload);
+            return;
+        }
+
+        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+            InvestScreen autoOpened = InvestScreen.openStandalone();
+            autoOpened.handleServerResponse(payload);
+        }
+    }
+
+    private static void handleStatus(UiResponsePayload payload, Minecraft minecraft) {
+        if (payload.action() == UiAction.OPEN) {
+            StatusScreen.openStandalone();
+            return;
+        }
+
+        if (minecraft.screen instanceof StatusScreen statusScreen) {
+            statusScreen.handleServerResponse(payload);
+            return;
+        }
+
+        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+            StatusScreen autoOpened = StatusScreen.openStandalone();
+            autoOpened.handleServerResponse(payload);
+        }
+    }
+
+    private static void handlePlayer(UiResponsePayload payload, Minecraft minecraft) {
+        if (payload.action() == UiAction.OPEN) {
+            PlayerOverviewScreen.openStandalone();
+            return;
+        }
+
+        if (minecraft.screen instanceof PlayerOverviewScreen playerOverviewScreen) {
+            playerOverviewScreen.handleServerResponse(payload);
+            return;
+        }
+
+        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+            PlayerOverviewScreen autoOpened = PlayerOverviewScreen.openStandalone();
+            autoOpened.handleServerResponse(payload);
+        }
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/server/player/BackendPlayerBridge.java
+```java
+package com.namanseul.farmingmod.server.player;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.namanseul.farmingmod.Config;
+import com.namanseul.farmingmod.NamanseulFarming;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.UUID;
+
+public final class BackendPlayerBridge {
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofMillis(2_000))
+            .build();
+
+    private BackendPlayerBridge() {}
+
+    public static JsonElement fetchWallet(UUID playerUuid) throws PlayerBridgeException {
+        String encodedPlayerId = URLEncoder.encode(playerUuid.toString(), StandardCharsets.UTF_8);
+        return sendGet("/wallet/" + encodedPlayerId);
+    }
+
+    public static JsonElement fetchMailbox(UUID playerUuid) throws PlayerBridgeException {
+        String encodedPlayerId = URLEncoder.encode(playerUuid.toString(), StandardCharsets.UTF_8);
+        return sendGet("/mail/" + encodedPlayerId);
+    }
+
+    public static JsonElement fetchInvestProjects() throws PlayerBridgeException {
+        return sendGet("/invest/projects");
+    }
+
+    public static JsonElement fetchOpsSummary() throws PlayerBridgeException {
+        return sendGet("/ops/summary");
+    }
+
+    private static JsonElement sendGet(String path) throws PlayerBridgeException {
+        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+                .GET()
+                .timeout(Duration.ofMillis(Config.backendTimeoutMs()))
+                .build();
+        return sendAndParse(request);
+    }
+
+    private static JsonElement sendAndParse(HttpRequest request) throws PlayerBridgeException {
+        try {
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            int statusCode = response.statusCode();
+            String body = response.body() == null ? "" : response.body();
+
+            if (statusCode / 100 != 2) {
+                throw new PlayerBridgeException(extractErrorMessage(statusCode, body));
+            }
+
+            JsonElement parsed = JsonParser.parseString(body);
+            if (parsed == null || parsed.isJsonNull()) {
+                throw new PlayerBridgeException("player response was empty");
+            }
+            return parsed;
+        } catch (PlayerBridgeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            if (Config.networkDebugLog()) {
+                NamanseulFarming.LOGGER.warn("[UI][Player] backend request failed: {}", ex.toString());
+            }
+            throw new PlayerBridgeException("player backend request failed");
+        }
+    }
+
+    private static URI buildUri(String path) throws PlayerBridgeException {
+        String baseUrl = Config.backendBaseUrl();
+        if (baseUrl.isBlank()) {
+            throw new PlayerBridgeException("backendBaseUrl not configured");
+        }
+        String normalizedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        return URI.create(normalizedBase + path);
+    }
+
+    private static String extractErrorMessage(int statusCode, String body) {
+        try {
+            JsonElement parsed = JsonParser.parseString(body);
+            if (parsed != null && parsed.isJsonObject()) {
+                JsonObject object = parsed.getAsJsonObject();
+                JsonElement messageElement = object.get("message");
+                if (messageElement != null && messageElement.isJsonPrimitive()) {
+                    String message = messageElement.getAsString();
+                    if (message != null && !message.isBlank()) {
+                        return message;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // keep fallback below
+        }
+        return "player backend status=" + statusCode;
+    }
+
+    public static final class PlayerBridgeException extends Exception {
+        public PlayerBridgeException(String message) {
+            super(message);
+        }
+    }
+}
+
+```
+\n\n### src/main/java/com/namanseul/farmingmod/server/player/PlayerActivityTracker.java
+```java
+package com.namanseul.farmingmod.server.player;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.namanseul.farmingmod.network.UiAction;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
+
+public final class PlayerActivityTracker {
+    private static final int MAX_ENTRIES_PER_PLAYER = 40;
+    private static final ConcurrentHashMap<UUID, ConcurrentLinkedDeque<JsonObject>> ACTIVITY_MAP = new ConcurrentHashMap<>();
+
+    private PlayerActivityTracker() {}
+
+    public static void recordShopTrade(UUID playerUuid, UiAction action, JsonElement result) {
+        if (result == null || !result.isJsonObject()) {
+            return;
+        }
+        JsonObject root = result.getAsJsonObject();
+
+        boolean buy = action == UiAction.SHOP_BUY;
+        String itemId = readString(root, "itemId", "unknown");
+        int quantity = readInt(root, "quantity", 0);
+        int totalPrice = readInt(root, "totalPrice", 0);
+        int balanceAfter = readInt(root, "balanceAfter", 0);
+        int amountDelta = buy ? -Math.max(totalPrice, 0) : Math.max(totalPrice, 0);
+
+        JsonObject entry = new JsonObject();
+        entry.addProperty("entryId", "shop:" + Instant.now().toEpochMilli() + ":" + itemId);
+        entry.addProperty("occurredAtEpochMillis", Instant.now().toEpochMilli());
+        entry.addProperty("category", "shop");
+        entry.addProperty("action", buy ? "buy" : "sell");
+        entry.addProperty("title", "Shop " + (buy ? "buy" : "sell"));
+        entry.addProperty("itemId", itemId);
+        entry.addProperty("quantity", quantity);
+        entry.addProperty("amountDelta", amountDelta);
+        entry.addProperty("balanceAfter", balanceAfter);
+        entry.addProperty("description", itemId + " x" + quantity + " total " + totalPrice);
+        entry.addProperty("source", "ui_live");
+        append(playerUuid, entry);
+    }
+
+    public static void recordInvest(UUID playerUuid, JsonElement result) {
+        if (result == null || !result.isJsonObject()) {
+            return;
+        }
+        JsonObject root = result.getAsJsonObject();
+
+        String projectId = readString(root, "projectId", "unknown");
+        int invested = readInt(root, "invested", 0);
+        int projectTotal = readInt(root, "projectTotal", 0);
+
+        JsonObject entry = new JsonObject();
+        entry.addProperty("entryId", "invest:" + Instant.now().toEpochMilli() + ":" + projectId);
+        entry.addProperty("occurredAtEpochMillis", Instant.now().toEpochMilli());
+        entry.addProperty("category", "invest");
+        entry.addProperty("action", "contribute");
+        entry.addProperty("title", "Project invest");
+        entry.addProperty("projectId", projectId);
+        entry.addProperty("amountDelta", -Math.max(invested, 0));
+        entry.addProperty("invested", invested);
+        entry.addProperty("projectTotal", projectTotal);
+        entry.addProperty("description", projectId + " +" + invested + " (total " + projectTotal + ")");
+        entry.addProperty("source", "ui_live");
+        append(playerUuid, entry);
+    }
+
+    public static void recordMailClaim(UUID playerUuid, JsonElement result) {
+        if (result == null || !result.isJsonObject()) {
+            return;
+        }
+        JsonObject root = result.getAsJsonObject();
+
+        String mailId = readString(root, "mailId", "unknown");
+        int rewardAmount = readInt(root, "rewardAmount", 0);
+        int balanceAfter = readInt(root, "balanceAfter", 0);
+
+        JsonObject entry = new JsonObject();
+        entry.addProperty("entryId", "mail:" + Instant.now().toEpochMilli() + ":" + mailId);
+        entry.addProperty("occurredAtEpochMillis", Instant.now().toEpochMilli());
+        entry.addProperty("category", "mail");
+        entry.addProperty("action", "claim");
+        entry.addProperty("title", "Mail claim");
+        entry.addProperty("mailId", mailId);
+        entry.addProperty("amountDelta", Math.max(rewardAmount, 0));
+        entry.addProperty("rewardAmount", rewardAmount);
+        entry.addProperty("balanceAfter", balanceAfter);
+        entry.addProperty("description", "claimed reward " + rewardAmount);
+        entry.addProperty("source", "ui_live");
+        append(playerUuid, entry);
+    }
+
+    public static JsonElement getRecent(UUID playerUuid, int limit) {
+        ConcurrentLinkedDeque<JsonObject> deque = ACTIVITY_MAP.get(playerUuid);
+        if (deque == null || deque.isEmpty()) {
+            return new com.google.gson.JsonArray();
+        }
+
+        List<JsonObject> snapshot = new ArrayList<>(deque);
+        snapshot.sort(Comparator.comparingLong(PlayerActivityTracker::readOccurredAt).reversed());
+        int max = Math.max(1, limit);
+
+        com.google.gson.JsonArray array = new com.google.gson.JsonArray();
+        for (int i = 0; i < snapshot.size() && i < max; i++) {
+            array.add(snapshot.get(i).deepCopy());
+        }
+        return array;
+    }
+
+    private static long readOccurredAt(JsonObject item) {
+        JsonElement value = item.get("occurredAtEpochMillis");
+        if (value == null || value.isJsonNull()) {
+            return 0L;
+        }
+        try {
+            return value.getAsLong();
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
+    private static void append(UUID playerUuid, JsonObject entry) {
+        ACTIVITY_MAP.compute(playerUuid, (ignored, deque) -> {
+            ConcurrentLinkedDeque<JsonObject> next = deque == null ? new ConcurrentLinkedDeque<>() : deque;
+            next.addFirst(entry);
+            while (next.size() > MAX_ENTRIES_PER_PLAYER) {
+                next.pollLast();
+            }
+            return next;
+        });
+    }
+
+    private static String readString(JsonObject root, String key, String fallback) {
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            String parsed = value.getAsString();
+            if (parsed == null || parsed.isBlank()) {
+                return fallback;
+            }
+            return parsed;
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static int readInt(JsonObject root, String key, int fallback) {
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            return value.getAsInt();
+        } catch (Exception ignored) {
+            try {
+                return Math.round(value.getAsFloat());
+            } catch (Exception ignoredAgain) {
+                return fallback;
+            }
+        }
+    }
+}
+
+```
+\n\n### src/main/java/com/namanseul/farmingmod/server/player/PlayerOverviewUiService.java
+```java
+package com.namanseul.farmingmod.server.player;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.namanseul.farmingmod.server.cache.TimedPlayerCache;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
+public final class PlayerOverviewUiService {
+    private static final Duration READ_CACHE_TTL = Duration.ofSeconds(5);
+    private static final TimedPlayerCache<JsonElement> WALLET_CACHE = new TimedPlayerCache<>();
+    private static final TimedPlayerCache<JsonElement> MAILBOX_CACHE = new TimedPlayerCache<>();
+    private static final TimedPlayerCache<JsonElement> SUMMARY_CACHE = new TimedPlayerCache<>();
+    private static final TimedPlayerCache<JsonElement> OVERVIEW_CACHE = new TimedPlayerCache<>();
+
+    private PlayerOverviewUiService() {}
+
+    public static JsonElement getOverview(UUID playerUuid, boolean forceRefresh) {
+        if (!forceRefresh) {
+            JsonElement cached = OVERVIEW_CACHE.get(playerUuid).orElse(null);
+            if (cached != null) {
+                return deepCopy(cached);
+            }
+        }
+
+        JsonArray partialNotes = new JsonArray();
+        JsonObject root = new JsonObject();
+        root.add("wallet", safeWallet(playerUuid, forceRefresh, partialNotes));
+        root.add("activity", safeActivity(playerUuid, forceRefresh, partialNotes));
+        root.add("summary", safeSummary(playerUuid, forceRefresh, partialNotes));
+        root.addProperty("partial", partialNotes.size() > 0);
+        root.add("partialNotes", partialNotes);
+        root.addProperty("generatedAtEpochMillis", Instant.now().toEpochMilli());
+
+        OVERVIEW_CACHE.put(playerUuid, deepCopy(root), READ_CACHE_TTL);
+        return root;
+    }
+
+    public static JsonElement getWallet(UUID playerUuid, boolean forceRefresh)
+            throws BackendPlayerBridge.PlayerBridgeException, PlayerOverviewUiException {
+        if (!forceRefresh) {
+            JsonElement cached = WALLET_CACHE.get(playerUuid).orElse(null);
+            if (cached != null) {
+                return deepCopy(cached);
+            }
+        }
+
+        JsonElement response = BackendPlayerBridge.fetchWallet(playerUuid);
+        JsonObject wallet = asObject(response, "wallet response is not an object");
+        if (!wallet.has("playerId")) {
+            wallet.addProperty("playerId", playerUuid.toString());
+        }
+        WALLET_CACHE.put(playerUuid, deepCopy(wallet), READ_CACHE_TTL);
+        return wallet;
+    }
+
+    public static JsonElement getActivity(UUID playerUuid, boolean forceRefresh) throws PlayerOverviewUiException {
+        JsonArray partialNotes = new JsonArray();
+        JsonObject activity = buildActivityPayload(playerUuid, forceRefresh, partialNotes);
+        if (partialNotes.size() > 0) {
+            activity.addProperty("partial", true);
+            activity.add("partialNotes", partialNotes);
+        }
+        return activity;
+    }
+
+    public static JsonElement getSummary(UUID playerUuid, boolean forceRefresh)
+            throws BackendPlayerBridge.PlayerBridgeException, PlayerOverviewUiException {
+        if (!forceRefresh) {
+            JsonElement cached = SUMMARY_CACHE.get(playerUuid).orElse(null);
+            if (cached != null) {
+                return deepCopy(cached);
+            }
+        }
+
+        JsonArray partialNotes = new JsonArray();
+        JsonObject summary = buildSummaryPayload(playerUuid, forceRefresh, partialNotes);
+        summary.addProperty("partial", partialNotes.size() > 0);
+        summary.add("partialNotes", partialNotes);
+        summary.addProperty("generatedAtEpochMillis", Instant.now().toEpochMilli());
+        SUMMARY_CACHE.put(playerUuid, deepCopy(summary), READ_CACHE_TTL);
+        return summary;
+    }
+
+    private static JsonElement safeWallet(UUID playerUuid, boolean forceRefresh, JsonArray partialNotes) {
+        try {
+            return getWallet(playerUuid, forceRefresh);
+        } catch (Exception ex) {
+            partialNotes.add("wallet: " + ex.getMessage());
+            JsonObject fallback = new JsonObject();
+            fallback.addProperty("playerId", playerUuid.toString());
+            fallback.addProperty("balance", 0);
+            return fallback;
+        }
+    }
+
+    private static JsonElement safeActivity(UUID playerUuid, boolean forceRefresh, JsonArray partialNotes) {
+        try {
+            return getActivity(playerUuid, forceRefresh);
+        } catch (Exception ex) {
+            partialNotes.add("activity: " + ex.getMessage());
+            JsonObject fallback = new JsonObject();
+            fallback.add("items", new JsonArray());
+            fallback.addProperty("count", 0);
+            fallback.addProperty("generatedAtEpochMillis", Instant.now().toEpochMilli());
+            return fallback;
+        }
+    }
+
+    private static JsonElement safeSummary(UUID playerUuid, boolean forceRefresh, JsonArray partialNotes) {
+        try {
+            return getSummary(playerUuid, forceRefresh);
+        } catch (Exception ex) {
+            partialNotes.add("summary: " + ex.getMessage());
+            JsonObject fallback = new JsonObject();
+            fallback.addProperty("playerId", playerUuid.toString());
+            fallback.addProperty("balance", 0);
+            fallback.addProperty("generatedAtEpochMillis", Instant.now().toEpochMilli());
+            return fallback;
+        }
+    }
+
+    private static JsonObject buildActivityPayload(UUID playerUuid, boolean forceRefresh, JsonArray partialNotes)
+            throws PlayerOverviewUiException {
+        JsonArray trackerItems = asArray(PlayerActivityTracker.getRecent(playerUuid, 20));
+        JsonArray derivedMailItems = new JsonArray();
+        try {
+            JsonArray mailbox = getMailboxArray(playerUuid, forceRefresh);
+            derivedMailItems = deriveActivityFromMailbox(mailbox);
+        } catch (Exception ex) {
+            partialNotes.add("mailbox_activity: " + ex.getMessage());
+        }
+
+        List<JsonObject> merged = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        appendActivityItems(merged, seen, trackerItems);
+        appendActivityItems(merged, seen, derivedMailItems);
+        merged.sort(Comparator.comparingLong(PlayerOverviewUiService::readOccurredAt).reversed());
+
+        JsonArray items = new JsonArray();
+        for (JsonObject item : merged) {
+            items.add(item.deepCopy());
+        }
+
+        JsonObject payload = new JsonObject();
+        payload.add("items", items);
+        payload.addProperty("count", items.size());
+        payload.addProperty("generatedAtEpochMillis", Instant.now().toEpochMilli());
+        return payload;
+    }
+
+    private static JsonObject buildSummaryPayload(UUID playerUuid, boolean forceRefresh, JsonArray partialNotes)
+            throws BackendPlayerBridge.PlayerBridgeException, PlayerOverviewUiException {
+        JsonObject wallet = asObject(getWallet(playerUuid, forceRefresh), "wallet payload invalid");
+        int balance = readInt(wallet, "balance", 0);
+
+        JsonArray mailbox = new JsonArray();
+        try {
+            mailbox = getMailboxArray(playerUuid, forceRefresh);
+        } catch (Exception ex) {
+            partialNotes.add("mailbox_summary: " + ex.getMessage());
+        }
+
+        JsonObject activity = buildActivityPayload(playerUuid, forceRefresh, partialNotes);
+        JsonArray activityItems = readArray(activity, "items");
+
+        int totalMailCount = mailbox.size();
+        int unclaimedRewardCount = 0;
+        int claimedRewardCount = 0;
+        int claimedRewardAmount = 0;
+        for (JsonElement mailElement : mailbox) {
+            if (mailElement == null || !mailElement.isJsonObject()) {
+                continue;
+            }
+            JsonObject mail = mailElement.getAsJsonObject();
+            boolean hasReward = readBoolean(mail, "hasReward");
+            boolean isClaimed = readBoolean(mail, "isClaimed");
+            int rewardAmount = readInt(mail, "rewardAmount", 0);
+
+            if (hasReward && !isClaimed) {
+                unclaimedRewardCount++;
+            }
+            if (hasReward && isClaimed) {
+                claimedRewardCount++;
+                claimedRewardAmount += Math.max(rewardAmount, 0);
+            }
+        }
+
+        int shopDelta = 0;
+        int investSpendTotal = 0;
+        int mailRewardTotal = 0;
+        for (JsonElement activityElement : activityItems) {
+            if (activityElement == null || !activityElement.isJsonObject()) {
+                continue;
+            }
+            JsonObject item = activityElement.getAsJsonObject();
+            String category = readString(item, "category", "");
+            int amountDelta = readInt(item, "amountDelta", 0);
+            if ("shop".equalsIgnoreCase(category)) {
+                shopDelta += amountDelta;
+            } else if ("invest".equalsIgnoreCase(category)) {
+                investSpendTotal += Math.max(0, -amountDelta);
+            } else if ("mail".equalsIgnoreCase(category)) {
+                mailRewardTotal += Math.max(0, amountDelta);
+            }
+        }
+
+        int activeProjectCount = 0;
+        try {
+            JsonElement investProjects = BackendPlayerBridge.fetchInvestProjects();
+            if (investProjects.isJsonArray()) {
+                activeProjectCount = investProjects.getAsJsonArray().size();
+            }
+        } catch (Exception ex) {
+            partialNotes.add("invest_summary: " + ex.getMessage());
+        }
+
+        String focusRegion = "-";
+        int activeEventCount = 0;
+        int activeProjectEffectCount = 0;
+        String dominantRegionCategory = "-";
+        try {
+            JsonObject ops = asObject(BackendPlayerBridge.fetchOpsSummary(), "ops summary invalid");
+            JsonObject focus = readObject(ops, "focus");
+            JsonObject events = readObject(ops, "events");
+            JsonObject projectEffects = readObject(ops, "projectEffects");
+            JsonObject regions = readObject(ops, "regions");
+
+            focusRegion = readString(focus, "currentFocusRegion", focusRegion);
+            activeEventCount = readInt(events, "activeCount", activeEventCount);
+            activeProjectEffectCount = readInt(projectEffects, "activeCount", activeProjectEffectCount);
+            dominantRegionCategory = readString(regions, "dominantCategory", dominantRegionCategory);
+        } catch (Exception ex) {
+            partialNotes.add("ops_summary: " + ex.getMessage());
+        }
+
+        JsonObject summary = new JsonObject();
+        summary.addProperty("playerId", playerUuid.toString());
+        summary.addProperty("balance", balance);
+
+        JsonObject mailSection = new JsonObject();
+        mailSection.addProperty("totalCount", totalMailCount);
+        mailSection.addProperty("unclaimedRewardCount", unclaimedRewardCount);
+        mailSection.addProperty("claimedRewardCount", claimedRewardCount);
+        mailSection.addProperty("claimedRewardAmount", claimedRewardAmount);
+        summary.add("mail", mailSection);
+
+        JsonObject activitySection = new JsonObject();
+        activitySection.addProperty("recentCount", activityItems.size());
+        activitySection.addProperty("shopDelta", shopDelta);
+        activitySection.addProperty("investSpendTotal", investSpendTotal);
+        activitySection.addProperty("mailRewardTotal", mailRewardTotal);
+        summary.add("activity", activitySection);
+
+        JsonObject investSection = new JsonObject();
+        investSection.addProperty("activeProjectCount", activeProjectCount);
+        summary.add("invest", investSection);
+
+        JsonObject statusSection = new JsonObject();
+        statusSection.addProperty("currentFocusRegion", focusRegion);
+        statusSection.addProperty("activeEventCount", activeEventCount);
+        statusSection.addProperty("activeProjectEffectCount", activeProjectEffectCount);
+        statusSection.addProperty("dominantRegionCategory", dominantRegionCategory);
+        summary.add("status", statusSection);
+
+        return summary;
+    }
+
+    private static JsonArray getMailboxArray(UUID playerUuid, boolean forceRefresh)
+            throws BackendPlayerBridge.PlayerBridgeException, PlayerOverviewUiException {
+        if (!forceRefresh) {
+            JsonElement cached = MAILBOX_CACHE.get(playerUuid).orElse(null);
+            if (cached != null) {
+                return asArray(cached);
+            }
+        }
+
+        JsonElement mailboxPayload = BackendPlayerBridge.fetchMailbox(playerUuid);
+        JsonArray mailbox = asArray(mailboxPayload);
+        MAILBOX_CACHE.put(playerUuid, deepCopy(mailbox), READ_CACHE_TTL);
+        return mailbox;
+    }
+
+    private static JsonArray deriveActivityFromMailbox(JsonArray mailbox) {
+        JsonArray items = new JsonArray();
+        for (JsonElement mailElement : mailbox) {
+            if (mailElement == null || !mailElement.isJsonObject()) {
+                continue;
+            }
+            JsonObject mail = mailElement.getAsJsonObject();
+            boolean isClaimed = readBoolean(mail, "isClaimed");
+            boolean hasReward = readBoolean(mail, "hasReward");
+            if (!isClaimed || !hasReward) {
+                continue;
+            }
+
+            String mailId = readString(mail, "id", "unknown");
+            int rewardAmount = readInt(mail, "rewardAmount", 0);
+            long occurredAt = parseEpochMillis(
+                    readString(mail, "claimedAt", ""),
+                    parseEpochMillis(readString(mail, "createdAt", ""), 0L)
+            );
+            String title = readString(mail, "title", "Mail reward");
+
+            JsonObject entry = new JsonObject();
+            entry.addProperty("entryId", "mailbox:" + mailId);
+            entry.addProperty("occurredAtEpochMillis", occurredAt > 0 ? occurredAt : Instant.now().toEpochMilli());
+            entry.addProperty("category", "mail");
+            entry.addProperty("action", "claimed");
+            entry.addProperty("title", "Mail reward");
+            entry.addProperty("mailId", mailId);
+            entry.addProperty("amountDelta", Math.max(rewardAmount, 0));
+            entry.addProperty("rewardAmount", rewardAmount);
+            entry.addProperty("description", title);
+            entry.addProperty("source", "mailbox");
+            items.add(entry);
+        }
+        return items;
+    }
+
+    private static void appendActivityItems(List<JsonObject> target, Set<String> seen, JsonArray source) {
+        for (JsonElement element : source) {
+            if (element == null || !element.isJsonObject()) {
+                continue;
+            }
+            JsonObject item = element.getAsJsonObject();
+            String entryId = readString(item, "entryId", "");
+            if (!entryId.isBlank()) {
+                if (seen.contains(entryId)) {
+                    continue;
+                }
+                seen.add(entryId);
+            }
+            target.add(item.deepCopy());
+        }
+    }
+
+    private static long readOccurredAt(JsonObject item) {
+        JsonElement value = item.get("occurredAtEpochMillis");
+        if (value == null || value.isJsonNull()) {
+            return 0L;
+        }
+        try {
+            return value.getAsLong();
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
+    private static long parseEpochMillis(String raw, long fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            long numeric = Long.parseLong(raw);
+            return numeric < 10_000_000_000L ? numeric * 1000L : numeric;
+        } catch (NumberFormatException ignored) {
+            try {
+                return OffsetDateTime.parse(raw).toInstant().toEpochMilli();
+            } catch (DateTimeParseException ignoredAgain) {
+                return fallback;
+            }
+        }
+    }
+
+    private static JsonArray asArray(JsonElement payload) throws PlayerOverviewUiException {
+        if (payload == null || payload.isJsonNull()) {
+            return new JsonArray();
+        }
+        if (payload.isJsonArray()) {
+            return payload.getAsJsonArray();
+        }
+        if (payload.isJsonObject()) {
+            JsonObject object = payload.getAsJsonObject();
+            JsonElement mails = object.get("mails");
+            if (mails != null && mails.isJsonArray()) {
+                return mails.getAsJsonArray();
+            }
+            JsonElement items = object.get("items");
+            if (items != null && items.isJsonArray()) {
+                return items.getAsJsonArray();
+            }
+        }
+        throw new PlayerOverviewUiException("payload is not an array");
+    }
+
+    private static JsonObject asObject(JsonElement payload, String errorMessage) throws PlayerOverviewUiException {
+        if (payload != null && payload.isJsonObject()) {
+            return payload.getAsJsonObject();
+        }
+        throw new PlayerOverviewUiException(errorMessage);
+    }
+
+    private static JsonObject readObject(JsonObject root, String key) {
+        if (root == null) {
+            return null;
+        }
+        JsonElement element = root.get(key);
+        if (element == null || !element.isJsonObject()) {
+            return null;
+        }
+        return element.getAsJsonObject();
+    }
+
+    private static JsonArray readArray(JsonObject root, String key) {
+        if (root == null) {
+            return new JsonArray();
+        }
+        JsonElement element = root.get(key);
+        if (element == null || !element.isJsonArray()) {
+            return new JsonArray();
+        }
+        return element.getAsJsonArray();
+    }
+
+    private static String readString(JsonObject root, String key, String fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            String parsed = value.getAsString();
+            return parsed == null || parsed.isBlank() ? fallback : parsed;
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static boolean readBoolean(JsonObject root, String key) {
+        if (root == null) {
+            return false;
+        }
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return false;
+        }
+        try {
+            return value.getAsBoolean();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static int readInt(JsonObject root, String key, int fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            return value.getAsInt();
+        } catch (Exception ignored) {
+            try {
+                return Math.round(value.getAsFloat());
+            } catch (Exception ignoredAgain) {
+                return fallback;
+            }
+        }
+    }
+
+    private static JsonElement deepCopy(JsonElement element) {
+        return element == null ? new JsonObject() : element.deepCopy();
+    }
+
+    public static final class PlayerOverviewUiException extends Exception {
+        public PlayerOverviewUiException(String message) {
+            super(message);
+        }
+    }
+}
+
+```
+\n\n### src/main/java/com/namanseul/farmingmod/network/UiServerPayloadHandlers.java
+```java
+package com.namanseul.farmingmod.network;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.namanseul.farmingmod.Config;
+import com.namanseul.farmingmod.NamanseulFarming;
+import com.namanseul.farmingmod.network.payload.HubSummaryData;
+import com.namanseul.farmingmod.network.payload.UiRequestPayload;
+import com.namanseul.farmingmod.network.payload.UiResponsePayload;
+import com.namanseul.farmingmod.server.mail.BackendMailBridge;
+import com.namanseul.farmingmod.server.mail.MailUiService;
+import com.namanseul.farmingmod.server.invest.BackendInvestBridge;
+import com.namanseul.farmingmod.server.invest.InvestUiService;
+import com.namanseul.farmingmod.server.player.BackendPlayerBridge;
+import com.namanseul.farmingmod.server.player.PlayerActivityTracker;
+import com.namanseul.farmingmod.server.player.PlayerOverviewUiService;
+import com.namanseul.farmingmod.server.status.BackendStatusBridge;
+import com.namanseul.farmingmod.server.status.StatusUiService;
+import com.namanseul.farmingmod.server.shop.BackendShopBridge;
+import com.namanseul.farmingmod.server.shop.ShopUiService;
+import com.namanseul.farmingmod.server.summary.HubSummaryService;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+
+public final class UiServerPayloadHandlers {
+    private static final Gson GSON = new Gson();
+
+    private UiServerPayloadHandlers() {}
+
+    public static void handleRequest(UiRequestPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) {
+            return;
+        }
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] C->S requestId={} screen={} action={} player={}",
+                    payload.requestId(),
+                    payload.screenType().serialized(),
+                    payload.action().serialized(),
+                    player.getGameProfile().getName()
+            );
+        }
+
+        try {
+            switch (payload.screenType()) {
+                case HUB -> handleHubRequest(payload, player);
+                case SHOP -> handleShopRequest(payload, player);
+                case MAIL -> handleMailRequest(payload, player);
+                case INVEST -> handleInvestRequest(payload, player);
+                case STATUS -> handleStatusRequest(payload, player);
+                case PLAYER -> handlePlayerRequest(payload, player);
+            }
+        } catch (IllegalArgumentException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Request validation failed id={} screen={} action={} error={}",
+                    payload.requestId(),
+                    payload.screenType().serialized(),
+                    payload.action().serialized(),
+                    ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (BackendShopBridge.ShopBridgeException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Shop bridge failed id={} action={} error={}",
+                    payload.requestId(), payload.action().serialized(), ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (BackendMailBridge.MailBridgeException | MailUiService.MailUiException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Mail bridge failed id={} action={} error={}",
+                    payload.requestId(), payload.action().serialized(), ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (BackendInvestBridge.InvestBridgeException | InvestUiService.InvestUiException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Invest bridge failed id={} action={} error={}",
+                    payload.requestId(), payload.action().serialized(), ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (BackendStatusBridge.StatusBridgeException | StatusUiService.StatusUiException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Status bridge failed id={} action={} error={}",
+                    payload.requestId(), payload.action().serialized(), ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (BackendPlayerBridge.PlayerBridgeException | PlayerOverviewUiService.PlayerOverviewUiException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Player bridge failed id={} action={} error={}",
+                    payload.requestId(), payload.action().serialized(), ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (Exception ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Request failed id={} screen={} action={} error={}",
+                    payload.requestId(),
+                    payload.screenType().serialized(),
+                    payload.action().serialized(),
+                    ex.toString());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    "ui request failed"
+            ));
+        }
+    }
+
+    private static void handleHubRequest(UiRequestPayload payload, ServerPlayer player) {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openHub(payload.requestId()));
+            return;
+        }
+
+        if (payload.action() != UiAction.INIT
+                && payload.action() != UiAction.SUMMARY
+                && payload.action() != UiAction.REFRESH) {
+            throw new IllegalArgumentException("unsupported hub action");
+        }
+
+        boolean forceRefresh = payload.action() == UiAction.REFRESH;
+        HubSummaryData summary = HubSummaryService.getSummary(player, forceRefresh);
+        UiResponsePayload response = UiResponsePayload.successSummary(payload.requestId(), payload.action(), summary);
+        PacketDistributor.sendToPlayer(player, response);
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=hub action={} partial={}",
+                    payload.requestId(),
+                    payload.action().serialized(),
+                    summary.partial()
+            );
+        }
+    }
+
+    private static void handleShopRequest(UiRequestPayload payload, ServerPlayer player)
+            throws BackendShopBridge.ShopBridgeException {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openShop(payload.requestId()));
+            return;
+        }
+
+        JsonObject requestPayload = parsePayloadObject(payload.payloadJson());
+        JsonElement result;
+        switch (payload.action()) {
+            case SHOP_LIST -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = ShopUiService.listShopItems(forceRefresh);
+            }
+            case SHOP_DETAIL -> {
+                String itemId = readItemId(requestPayload);
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = ShopUiService.getShopItem(itemId, forceRefresh);
+            }
+            case SHOP_PREVIEW_BUY -> {
+                String itemId = readItemId(requestPayload);
+                int quantity = readQuantity(requestPayload);
+                result = ShopUiService.previewBuy(player.getUUID(), itemId, quantity);
+            }
+            case SHOP_PREVIEW_SELL -> {
+                String itemId = readItemId(requestPayload);
+                int quantity = readQuantity(requestPayload);
+                result = ShopUiService.previewSell(player.getUUID(), itemId, quantity);
+            }
+            case SHOP_BUY -> {
+                String itemId = readItemId(requestPayload);
+                int quantity = readQuantity(requestPayload);
+                result = ShopUiService.buy(player.getUUID(), itemId, quantity);
+            }
+            case SHOP_SELL -> {
+                String itemId = readItemId(requestPayload);
+                int quantity = readQuantity(requestPayload);
+                result = ShopUiService.sell(player.getUUID(), itemId, quantity);
+            }
+            default -> throw new IllegalArgumentException("unsupported shop action");
+        }
+
+        if (payload.action() == UiAction.SHOP_BUY || payload.action() == UiAction.SHOP_SELL) {
+            try {
+                PlayerActivityTracker.recordShopTrade(player.getUUID(), payload.action(), result);
+            } catch (Exception ignored) {
+                // activity tracking must never break core flow
+            }
+        }
+
+        PacketDistributor.sendToPlayer(
+                player,
+                UiResponsePayload.successJson(
+                        payload.requestId(),
+                        UiScreenType.SHOP,
+                        payload.action(),
+                        GSON.toJson(result)
+                )
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=shop action={}",
+                    payload.requestId(),
+                    payload.action().serialized()
+            );
+        }
+    }
+
+    private static void handleMailRequest(UiRequestPayload payload, ServerPlayer player)
+            throws BackendMailBridge.MailBridgeException, MailUiService.MailUiException {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openMail(payload.requestId()));
+            return;
+        }
+
+        JsonObject requestPayload = parsePayloadObject(payload.payloadJson());
+        JsonElement result;
+        switch (payload.action()) {
+            case MAIL_LIST -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = MailUiService.listMailbox(player.getUUID(), forceRefresh);
+            }
+            case MAIL_REFRESH -> {
+                result = MailUiService.listMailbox(player.getUUID(), true);
+            }
+            case MAIL_DETAIL -> {
+                String mailId = readMailId(requestPayload);
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = MailUiService.getMailDetail(player.getUUID(), mailId, forceRefresh);
+            }
+            case MAIL_CLAIM -> {
+                String mailId = readMailId(requestPayload);
+                result = MailUiService.claim(player.getUUID(), mailId);
+            }
+            default -> throw new IllegalArgumentException("unsupported mail action");
+        }
+
+        if (payload.action() == UiAction.MAIL_CLAIM) {
+            try {
+                PlayerActivityTracker.recordMailClaim(player.getUUID(), result);
+            } catch (Exception ignored) {
+                // activity tracking must never break core flow
+            }
+        }
+
+        PacketDistributor.sendToPlayer(
+                player,
+                UiResponsePayload.successJson(
+                        payload.requestId(),
+                        UiScreenType.MAIL,
+                        payload.action(),
+                        GSON.toJson(result)
+                )
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=mail action={}",
+                    payload.requestId(),
+                    payload.action().serialized()
+            );
+        }
+    }
+
+    private static void handleInvestRequest(UiRequestPayload payload, ServerPlayer player)
+            throws BackendInvestBridge.InvestBridgeException, InvestUiService.InvestUiException {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openInvest(payload.requestId()));
+            return;
+        }
+
+        JsonObject requestPayload = parsePayloadObject(payload.payloadJson());
+        JsonElement result;
+        switch (payload.action()) {
+            case INVEST_LIST -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = InvestUiService.listProjects(player.getUUID(), forceRefresh);
+            }
+            case INVEST_REFRESH -> {
+                result = InvestUiService.listProjects(player.getUUID(), true);
+            }
+            case INVEST_DETAIL -> {
+                String projectId = readProjectId(requestPayload);
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = InvestUiService.getProjectDetail(player.getUUID(), projectId, forceRefresh);
+            }
+            case INVEST_PROGRESS -> {
+                String projectId = readProjectId(requestPayload);
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = InvestUiService.getProjectProgress(player.getUUID(), projectId, forceRefresh);
+            }
+            case INVEST_CONTRIBUTE -> {
+                String projectId = readProjectId(requestPayload);
+                int amount = readAmount(requestPayload);
+                result = InvestUiService.invest(player.getUUID(), projectId, amount);
+            }
+            default -> throw new IllegalArgumentException("unsupported invest action");
+        }
+
+        if (payload.action() == UiAction.INVEST_CONTRIBUTE) {
+            try {
+                PlayerActivityTracker.recordInvest(player.getUUID(), result);
+            } catch (Exception ignored) {
+                // activity tracking must never break core flow
+            }
+        }
+
+        PacketDistributor.sendToPlayer(
+                player,
+                UiResponsePayload.successJson(
+                        payload.requestId(),
+                        UiScreenType.INVEST,
+                        payload.action(),
+                        GSON.toJson(result)
+                )
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=invest action={}",
+                    payload.requestId(),
+                    payload.action().serialized()
+            );
+        }
+    }
+
+    private static void handleStatusRequest(UiRequestPayload payload, ServerPlayer player)
+            throws BackendStatusBridge.StatusBridgeException, StatusUiService.StatusUiException {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openStatus(payload.requestId()));
+            return;
+        }
+
+        JsonObject requestPayload = parsePayloadObject(payload.payloadJson());
+        JsonElement result;
+        switch (payload.action()) {
+            case STATUS_OVERVIEW -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = StatusUiService.getOverview(forceRefresh);
+            }
+            case STATUS_REFRESH -> result = StatusUiService.getOverview(true);
+            default -> throw new IllegalArgumentException("unsupported status action");
+        }
+
+        PacketDistributor.sendToPlayer(
+                player,
+                UiResponsePayload.successJson(
+                        payload.requestId(),
+                        UiScreenType.STATUS,
+                        payload.action(),
+                        GSON.toJson(result)
+                )
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=status action={}",
+                    payload.requestId(),
+                    payload.action().serialized()
+            );
+        }
+    }
+
+    private static void handlePlayerRequest(UiRequestPayload payload, ServerPlayer player)
+            throws BackendPlayerBridge.PlayerBridgeException, PlayerOverviewUiService.PlayerOverviewUiException {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openPlayer(payload.requestId()));
+            return;
+        }
+
+        JsonObject requestPayload = parsePayloadObject(payload.payloadJson());
+        JsonElement result;
+        switch (payload.action()) {
+            case PLAYER_OVERVIEW -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = PlayerOverviewUiService.getOverview(player.getUUID(), forceRefresh);
+            }
+            case PLAYER_WALLET -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = PlayerOverviewUiService.getWallet(player.getUUID(), forceRefresh);
+            }
+            case PLAYER_ACTIVITY -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = PlayerOverviewUiService.getActivity(player.getUUID(), forceRefresh);
+            }
+            case PLAYER_SUMMARY -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = PlayerOverviewUiService.getSummary(player.getUUID(), forceRefresh);
+            }
+            case PLAYER_REFRESH -> result = PlayerOverviewUiService.getOverview(player.getUUID(), true);
+            default -> throw new IllegalArgumentException("unsupported player action");
+        }
+
+        PacketDistributor.sendToPlayer(
+                player,
+                UiResponsePayload.successJson(
+                        payload.requestId(),
+                        UiScreenType.PLAYER,
+                        payload.action(),
+                        GSON.toJson(result)
+                )
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=player action={}",
+                    payload.requestId(),
+                    payload.action().serialized()
+            );
+        }
+    }
+
+    private static JsonObject parsePayloadObject(String payloadJson) {
+        if (payloadJson == null || payloadJson.isBlank()) {
+            return new JsonObject();
+        }
+
+        try {
+            JsonElement parsed = JsonParser.parseString(payloadJson);
+            if (!parsed.isJsonObject()) {
+                throw new IllegalArgumentException("payload must be a JSON object");
+            }
+            return parsed.getAsJsonObject();
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("payload json is invalid");
+        }
+    }
+
+    private static boolean readBoolean(JsonObject payload, String key) {
+        JsonElement value = payload.get(key);
+        if (value == null || value.isJsonNull()) {
+            return false;
+        }
+        try {
+            return value.getAsBoolean();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static String readItemId(JsonObject payload) {
+        JsonElement value = payload.get("itemId");
+        if (value == null || value.isJsonNull()) {
+            throw new IllegalArgumentException("itemId is required");
+        }
+        String itemId = value.getAsString();
+        if (itemId == null || itemId.isBlank()) {
+            throw new IllegalArgumentException("itemId is required");
+        }
+        return itemId.trim();
+    }
+
+    private static int readQuantity(JsonObject payload) {
+        JsonElement value = payload.get("quantity");
+        if (value == null || value.isJsonNull()) {
+            throw new IllegalArgumentException("quantity is required");
+        }
+        int quantity;
+        try {
+            quantity = value.getAsInt();
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("quantity must be a positive integer");
+        }
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("quantity must be a positive integer");
+        }
+        return quantity;
+    }
+
+    private static String readMailId(JsonObject payload) {
+        JsonElement value = payload.get("mailId");
+        if (value == null || value.isJsonNull()) {
+            throw new IllegalArgumentException("mailId is required");
+        }
+        String mailId = value.getAsString();
+        if (mailId == null || mailId.isBlank()) {
+            throw new IllegalArgumentException("mailId is required");
+        }
+        return mailId.trim();
+    }
+
+    private static String readProjectId(JsonObject payload) {
+        JsonElement value = payload.get("projectId");
+        if (value == null || value.isJsonNull()) {
+            throw new IllegalArgumentException("projectId is required");
+        }
+        String projectId = value.getAsString();
+        if (projectId == null || projectId.isBlank()) {
+            throw new IllegalArgumentException("projectId is required");
+        }
+        return projectId.trim();
+    }
+
+    private static int readAmount(JsonObject payload) {
+        JsonElement value = payload.get("amount");
+        if (value == null || value.isJsonNull()) {
+            throw new IllegalArgumentException("amount is required");
+        }
+        int amount;
+        try {
+            amount = value.getAsInt();
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("amount must be a positive integer");
+        }
+        if (amount <= 0) {
+            throw new IllegalArgumentException("amount must be a positive integer");
+        }
+        return amount;
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/ui/tab/PlayerTabView.java
+```java
+package com.namanseul.farmingmod.client.ui.tab;
+
+import com.namanseul.farmingmod.network.payload.HubSummaryData;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+public final class PlayerTabView implements HubTabView {
+    @Override
+    public Component tabLabel() {
+        return Component.literal("My");
+    }
+
+    @Override
+    public List<Component> buildListEntries(@Nullable HubSummaryData summary) {
+        List<Component> entries = new ArrayList<>();
+        entries.add(Component.literal("Player overview UI ready for stage 6"));
+        entries.add(Component.literal("Use Open Overview button to enter"));
+        entries.add(Component.literal("Wallet / Recent Activity / Summary"));
+        if (summary != null) {
+            entries.add(Component.literal("unclaimed mails: " + summary.unclaimedMailCount()));
+            entries.add(Component.literal("invest progress: " + summary.investProgressPercent() + "%"));
+        }
+        return entries;
+    }
+
+    @Override
+    public List<Component> buildDetailLines(@Nullable HubSummaryData summary, int selectedIndex) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("[Player Overview]"));
+        lines.add(Component.literal("Open unified player assets and state panel."));
+        if (summary != null) {
+            lines.add(Component.literal("summary focus: " + summary.currentFocusRegion()));
+            lines.add(Component.literal("summary active events: " + summary.activeEventCount()));
+            lines.add(Component.literal("summary active effects: " + summary.activeProjectEffectCount()));
+        }
+        return lines;
+    }
+}
+
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/ui/screen/GameHubScreen.java
+```java
+package com.namanseul.farmingmod.client.ui.screen;
+
+import com.namanseul.farmingmod.Config;
+import com.namanseul.farmingmod.NamanseulFarming;
+import com.namanseul.farmingmod.client.network.UiClientNetworking;
+import com.namanseul.farmingmod.client.ui.tab.HubTabView;
+import com.namanseul.farmingmod.client.ui.tab.InvestTabView;
+import com.namanseul.farmingmod.client.ui.tab.MailTabView;
+import com.namanseul.farmingmod.client.ui.tab.PlayerTabView;
+import com.namanseul.farmingmod.client.ui.tab.RegionTabView;
+import com.namanseul.farmingmod.client.ui.tab.ShopTabView;
+import com.namanseul.farmingmod.client.ui.widget.UiButton;
+import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
+import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
+import com.namanseul.farmingmod.network.UiAction;
+import com.namanseul.farmingmod.network.payload.HubSummaryData;
+import com.namanseul.farmingmod.network.payload.UiResponsePayload;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.network.chat.Component;
+
+public final class GameHubScreen extends BaseTabbedScreen {
+    private static final String TAB_SHOP = "shop";
+    private static final String TAB_MAIL = "mail";
+    private static final String TAB_INVEST = "invest";
+    private static final String TAB_REGION = "region";
+    private static final String TAB_PLAYER = "player";
+
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
+            .withZone(ZoneId.systemDefault());
+
+    private static String lastSelectedTab = TAB_SHOP;
+
+    private final Map<String, HubTabView> tabViews = new LinkedHashMap<>();
+
+    private HubSummaryData summaryData;
+    private UiListPanel listPanel;
+    private List<Component> detailLines = List.of();
+    private String pendingRequestId;
+    private Button openTabButton;
+
+    private int frameX;
+    private int frameY;
+    private int frameWidth;
+    private int frameHeight;
+
+    private int summaryX;
+    private int summaryY;
+    private int summaryWidth;
+    private int summaryHeight;
+
+    private int listX;
+    private int listY;
+    private int listWidth;
+    private int listHeight;
+
+    private int detailX;
+    private int detailY;
+    private int detailWidth;
+    private int detailHeight;
+
+    public GameHubScreen() {
+        super(Component.translatable("screen.namanseulfarming.hub.title"));
+        registerTabs();
+        setInitialTab(lastSelectedTab);
+    }
+
+    public static void openFromCommand() {
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.setScreen(new GameHubScreen());
+    }
+
+    public static void openFromKeybind() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof GameHubScreen) {
+            return;
+        }
+        minecraft.setScreen(new GameHubScreen());
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        recalcLayout();
+        initCommonButtons(frameX + frameWidth - 4, frameY + 8);
+        openTabButton = addRenderableWidget(UiButton.create(
+                Component.translatable("screen.namanseulfarming.shop.open_button"),
+                frameX + frameWidth - 252,
+                frameY + 8,
+                92,
+                20,
+                button -> openActiveTabScreen()
+        ));
+        initTabButtons(frameX + 10, frameY + 34, 72, 20, 4);
+        listPanel = new UiListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
+
+        updateTabContent();
+        refreshOpenShopButton();
+        if (summaryData == null) {
+            requestSummary(UiAction.INIT);
+        }
+    }
+
+    private void registerTabs() {
+        if (!tabViews.isEmpty()) {
+            return;
+        }
+
+        tabViews.put(TAB_SHOP, new ShopTabView());
+        tabViews.put(TAB_MAIL, new MailTabView());
+        tabViews.put(TAB_INVEST, new InvestTabView());
+        tabViews.put(TAB_REGION, new RegionTabView());
+        tabViews.put(TAB_PLAYER, new PlayerTabView());
+
+        addTab(TAB_SHOP, tabViews.get(TAB_SHOP).tabLabel());
+        addTab(TAB_MAIL, tabViews.get(TAB_MAIL).tabLabel());
+        addTab(TAB_INVEST, tabViews.get(TAB_INVEST).tabLabel());
+        addTab(TAB_REGION, tabViews.get(TAB_REGION).tabLabel());
+        addTab(TAB_PLAYER, tabViews.get(TAB_PLAYER).tabLabel());
+    }
+
+    @Override
+    protected void onRefreshPressed() {
+        requestSummary(UiAction.REFRESH);
+    }
+
+    @Override
+    protected void onTabChanged(String tabId) {
+        lastSelectedTab = tabId;
+        refreshOpenShopButton();
+        updateTabContent();
+    }
+
+    public void handleServerResponse(UiResponsePayload payload) {
+        if (payload.action() == UiAction.OPEN) {
+            return;
+        }
+
+        if (pendingRequestId != null && !pendingRequestId.equals(payload.requestId())) {
+            if (Config.networkDebugLog()) {
+                NamanseulFarming.LOGGER.debug("[UI] ignored stale response id={} pending={}", payload.requestId(), pendingRequestId);
+            }
+            return;
+        }
+
+        pendingRequestId = null;
+        setLoading(false);
+
+        if (!payload.success()) {
+            setError(payload.error() == null ? "Hub summary failed" : payload.error());
+            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
+                    Component.translatable("screen.namanseulfarming.hub.banner.failed")));
+            return;
+        }
+
+        if (payload.data() == null) {
+            setError("Hub summary response had no data");
+            return;
+        }
+
+        summaryData = payload.data();
+        setError(null);
+        updateTabContent();
+
+        if (summaryData.partial()) {
+            String note = summaryData.partialNote() == null || summaryData.partialNote().isBlank()
+                    ? "partial summary"
+                    : summaryData.partialNote();
+            setMessageBanner(new UiMessageBanner(
+                    UiMessageBanner.MessageType.WARNING,
+                    Component.literal("Some summary sections failed: " + userFacingPartialNote(note))
+            ));
+        } else {
+            setMessageBanner(new UiMessageBanner(
+                    UiMessageBanner.MessageType.INFO,
+                    Component.translatable("screen.namanseulfarming.hub.banner.updated", formatTime(summaryData.refreshedAtEpochMillis()))
+            ));
+        }
+    }
+
+    @Override
+    protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        recalcLayout();
+
+        renderPanel(graphics, frameX, frameY, frameWidth, frameHeight);
+        renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
+
+        renderPanel(graphics, summaryX, summaryY, summaryWidth, summaryHeight);
+        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.hub.summary"), summaryX + 6, summaryY + 6);
+        renderSummaryLines(graphics);
+
+        renderPanel(graphics, listX, listY, listWidth, listHeight);
+        if (listPanel != null) {
+            listPanel.render(graphics, font, mouseX, mouseY);
+        }
+        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.hub.list"), listX + 6, listY + 6);
+
+        renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
+        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.hub.detail"), detailX + 6, detailY + 6);
+        renderDetailLines(graphics);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (listPanel != null && listPanel.mouseClicked(mouseX, mouseY, button)) {
+            updateDetailLines();
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (listPanel != null && listPanel.mouseScrolled(mouseX, mouseY, scrollY)) {
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    private void requestSummary(UiAction action) {
+        setLoading(true, Component.translatable("screen.namanseulfarming.hub.loading"));
+        setError(null);
+        pendingRequestId = UiClientNetworking.requestHub(action);
+    }
+
+    private void openActiveTabScreen() {
+        if (TAB_SHOP.equals(activeTabId())) {
+            Minecraft.getInstance().setScreen(new ShopScreen(this));
+            return;
+        }
+        if (TAB_MAIL.equals(activeTabId())) {
+            Minecraft.getInstance().setScreen(new MailScreen(this));
+            return;
+        }
+        if (TAB_INVEST.equals(activeTabId())) {
+            Minecraft.getInstance().setScreen(new InvestScreen(this));
+            return;
+        }
+        if (TAB_REGION.equals(activeTabId())) {
+            Minecraft.getInstance().setScreen(new StatusScreen(this));
+            return;
+        }
+        if (TAB_PLAYER.equals(activeTabId())) {
+            Minecraft.getInstance().setScreen(new PlayerOverviewScreen(this));
+        }
+    }
+
+    private void recalcLayout() {
+        frameWidth = Math.min(432, width - 20);
+        frameHeight = Math.min(264, height - 20);
+        frameX = (width - frameWidth) / 2;
+        frameY = (height - frameHeight) / 2;
+
+        summaryX = frameX + 10;
+        summaryY = frameY + 58;
+        summaryWidth = frameWidth - 20;
+        summaryHeight = 60;
+
+        listX = frameX + 10;
+        listY = frameY + 124;
+        listWidth = 150;
+        listHeight = frameHeight - 134;
+
+        detailX = listX + listWidth + 8;
+        detailY = listY;
+        detailWidth = frameWidth - 20 - listWidth - 8;
+        detailHeight = listHeight;
+    }
+
+    private void updateTabContent() {
+        HubTabView tabView = tabViews.get(activeTabId());
+        if (tabView == null || listPanel == null) {
+            return;
+        }
+
+        listPanel.setEntries(tabView.buildListEntries(summaryData));
+        if (listPanel.isEmpty()) {
+            setEmpty(Component.translatable("screen.namanseulfarming.hub.empty"));
+        } else {
+            setEmpty(null);
+        }
+        updateDetailLines();
+    }
+
+    private void refreshOpenShopButton() {
+        if (openTabButton == null) {
+            return;
+        }
+
+        if (TAB_SHOP.equals(activeTabId())) {
+            openTabButton.visible = true;
+            openTabButton.active = true;
+            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.shop.open_button"));
+            return;
+        }
+
+        if (TAB_MAIL.equals(activeTabId())) {
+            openTabButton.visible = true;
+            openTabButton.active = true;
+            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.mail.open_button"));
+            return;
+        }
+
+        if (TAB_INVEST.equals(activeTabId())) {
+            openTabButton.visible = true;
+            openTabButton.active = true;
+            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.invest.open_button"));
+            return;
+        }
+
+        if (TAB_REGION.equals(activeTabId())) {
+            openTabButton.visible = true;
+            openTabButton.active = true;
+            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.status.open_button"));
+            return;
+        }
+
+        if (TAB_PLAYER.equals(activeTabId())) {
+            openTabButton.visible = true;
+            openTabButton.active = true;
+            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.player.open_button"));
+            return;
+        }
+
+        openTabButton.visible = false;
+        openTabButton.active = false;
+    }
+
+    private void updateDetailLines() {
+        HubTabView tabView = tabViews.get(activeTabId());
+        if (tabView == null || listPanel == null) {
+            detailLines = List.of();
+            return;
+        }
+        detailLines = tabView.buildDetailLines(summaryData, listPanel.selectedIndex());
+    }
+
+    private void renderSummaryLines(GuiGraphics graphics) {
+        if (summaryData == null) {
+            graphics.drawString(font, Component.translatable("screen.namanseulfarming.hub.summary_waiting"),
+                    summaryX + 8, summaryY + 24, 0xDDE6F9, false);
+            return;
+        }
+
+        int lineX = summaryX + 8;
+        int lineY = summaryY + 20;
+        int color = 0xDDE6F9;
+        graphics.drawString(font, Component.literal("Focus: " + summaryData.currentFocusRegion()), lineX, lineY, color, false);
+        graphics.drawString(font, Component.literal("Active Events: " + summaryData.activeEventCount()), lineX + 190, lineY, color, false);
+        graphics.drawString(font, Component.literal("Project Effects: " + summaryData.activeProjectEffectCount()), lineX, lineY + 12, color, false);
+        graphics.drawString(font, Component.literal("Dominant Region: " + summaryData.dominantRegionCategory()), lineX + 190, lineY + 12, color, false);
+        graphics.drawString(font, Component.literal("Generated: " + formatTime(summaryData.generatedAtEpochMillis())), lineX, lineY + 24, color, false);
+        graphics.drawString(font, Component.literal("Refreshed: " + formatTime(summaryData.refreshedAtEpochMillis())), lineX + 190, lineY + 24, color, false);
+    }
+
+    private void renderDetailLines(GuiGraphics graphics) {
+        int lineY = detailY + 22;
+        for (Component line : detailLines) {
+            graphics.drawString(font, line, detailX + 8, lineY, 0xEAF1FF, false);
+            lineY += 12;
+            if (lineY > detailY + detailHeight - 10) {
+                break;
+            }
+        }
+    }
+
+    private static String formatTime(long epochMillis) {
+        if (epochMillis <= 0) {
+            return "-";
+        }
+        return TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
+    }
+
+    private static String userFacingPartialNote(String rawNote) {
+        if (rawNote == null || rawNote.isBlank()) {
+            return "partial summary";
+        }
+        return switch (rawNote) {
+            case "ops summary connect failed" -> "ops summary connect failed (backend not reachable)";
+            case "ops summary timeout" -> "ops summary timeout (backend too slow)";
+            default -> rawNote;
+        };
+    }
+}
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/ui/player/PlayerOverviewData.java
+```java
+package com.namanseul.farmingmod.client.ui.player;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import java.util.List;
+
+public record PlayerOverviewData(
+        JsonObject wallet,
+        JsonObject activity,
+        JsonObject summary,
+        boolean partial,
+        List<String> partialNotes
+) {
+    public JsonArray activityItems() {
+        if (activity == null) {
+            return new JsonArray();
+        }
+        var items = activity.get("items");
+        return items != null && items.isJsonArray() ? items.getAsJsonArray() : new JsonArray();
+    }
+}
+
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/ui/player/PlayerOverviewParser.java
+```java
+package com.namanseul.farmingmod.client.ui.player;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.util.ArrayList;
+import java.util.List;
+
+public final class PlayerOverviewParser {
+    private PlayerOverviewParser() {}
+
+    public static PlayerOverviewData parseOverview(String json) {
+        JsonObject root = parseRootObject(json);
+        JsonObject wallet = readObject(root, "wallet");
+        JsonObject activity = readObject(root, "activity");
+        JsonObject summary = readObject(root, "summary");
+        boolean partial = readBoolean(root, "partial");
+        List<String> partialNotes = readStringList(root, "partialNotes");
+        return new PlayerOverviewData(
+                wallet == null ? new JsonObject() : wallet,
+                activity == null ? defaultActivityObject() : activity,
+                summary == null ? new JsonObject() : summary,
+                partial,
+                partialNotes
+        );
+    }
+
+    public static JsonObject parseWallet(String json) {
+        return parseRootObject(json);
+    }
+
+    public static JsonObject parseActivity(String json) {
+        JsonObject activity = parseRootObject(json);
+        if (!activity.has("items") || !activity.get("items").isJsonArray()) {
+            activity.add("items", new JsonArray());
+        }
+        return activity;
+    }
+
+    public static JsonObject parseSummary(String json) {
+        return parseRootObject(json);
+    }
+
+    private static JsonObject parseRootObject(String json) {
+        if (json == null || json.isBlank()) {
+            throw new IllegalArgumentException("player overview payload is empty");
+        }
+        JsonElement parsed = JsonParser.parseString(json);
+        if (!parsed.isJsonObject()) {
+            throw new IllegalArgumentException("player overview payload is not an object");
+        }
+        return parsed.getAsJsonObject();
+    }
+
+    private static JsonObject readObject(JsonObject root, String key) {
+        JsonElement value = root.get(key);
+        if (value == null || !value.isJsonObject()) {
+            return null;
+        }
+        return value.getAsJsonObject();
+    }
+
+    private static boolean readBoolean(JsonObject root, String key) {
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return false;
+        }
+        try {
+            return value.getAsBoolean();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static List<String> readStringList(JsonObject root, String key) {
+        JsonElement value = root.get(key);
+        if (value == null || !value.isJsonArray()) {
+            return List.of();
+        }
+
+        List<String> items = new ArrayList<>();
+        for (JsonElement entry : value.getAsJsonArray()) {
+            if (entry == null || entry.isJsonNull()) {
+                continue;
+            }
+            try {
+                String parsed = entry.getAsString();
+                if (parsed != null && !parsed.isBlank()) {
+                    items.add(parsed);
+                }
+            } catch (Exception ignored) {
+                // skip invalid entry
+            }
+        }
+        return List.copyOf(items);
+    }
+
+    private static JsonObject defaultActivityObject() {
+        JsonObject fallback = new JsonObject();
+        fallback.add("items", new JsonArray());
+        fallback.addProperty("count", 0);
+        return fallback;
+    }
+}
+
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/ui/player/PlayerOverviewFormatter.java
+```java
+package com.namanseul.farmingmod.client.ui.player;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import java.text.NumberFormat;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+public final class PlayerOverviewFormatter {
+    public static final String TAB_WALLET = "wallet";
+    public static final String TAB_ACTIVITY = "activity";
+    public static final String TAB_SUMMARY = "summary";
+
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
+            .withZone(ZoneId.systemDefault());
+
+    private PlayerOverviewFormatter() {}
+
+    public static List<Component> buildListEntries(
+            String tabId,
+            @Nullable JsonObject wallet,
+            @Nullable JsonObject activity,
+            @Nullable JsonObject summary
+    ) {
+        return switch (tabId) {
+            case TAB_WALLET -> buildWalletEntries(wallet);
+            case TAB_ACTIVITY -> buildActivityEntries(activity);
+            case TAB_SUMMARY -> buildSummaryEntries(summary);
+            default -> List.of();
+        };
+    }
+
+    public static List<Component> buildDetailLines(
+            String tabId,
+            @Nullable JsonObject wallet,
+            @Nullable JsonObject activity,
+            @Nullable JsonObject summary,
+            int selectedIndex
+    ) {
+        return switch (tabId) {
+            case TAB_WALLET -> buildWalletDetail(wallet);
+            case TAB_ACTIVITY -> buildActivityDetail(activity, selectedIndex);
+            case TAB_SUMMARY -> buildSummaryDetail(summary, selectedIndex);
+            default -> List.of();
+        };
+    }
+
+    private static List<Component> buildWalletEntries(@Nullable JsonObject wallet) {
+        if (wallet == null || wallet.entrySet().isEmpty()) {
+            return List.of(Component.literal("wallet data is not loaded yet"));
+        }
+
+        List<Component> entries = new ArrayList<>();
+        entries.add(Component.literal("Balance: " + formatNumber(readInt(wallet, "balance", 0))));
+        entries.add(Component.literal("Player: " + readString(wallet, "playerId", "-")));
+        return entries;
+    }
+
+    private static List<Component> buildWalletDetail(@Nullable JsonObject wallet) {
+        if (wallet == null || wallet.entrySet().isEmpty()) {
+            return List.of(Component.literal("wallet detail is not available"));
+        }
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("playerId: " + readString(wallet, "playerId", "-")));
+        lines.add(Component.literal("balance: " + formatNumber(readInt(wallet, "balance", 0))));
+        return lines;
+    }
+
+    private static List<Component> buildActivityEntries(@Nullable JsonObject activity) {
+        JsonArray items = readArray(activity, "items");
+        if (items.isEmpty()) {
+            return List.of(Component.literal("no recent activity"));
+        }
+
+        List<Component> entries = new ArrayList<>();
+        for (JsonElement itemElement : items) {
+            if (itemElement == null || !itemElement.isJsonObject()) {
+                continue;
+            }
+            JsonObject item = itemElement.getAsJsonObject();
+            String title = readString(item, "title", readString(item, "category", "activity"));
+            int delta = readInt(item, "amountDelta", 0);
+            long occurredAt = readLong(item, "occurredAtEpochMillis", 0L);
+            String time = occurredAt > 0 ? TIME_FORMATTER.format(Instant.ofEpochMilli(occurredAt)) : "--:--:--";
+            entries.add(Component.literal(time + " | " + title + " | " + signedNumber(delta)));
+        }
+        return entries.isEmpty() ? List.of(Component.literal("no recent activity")) : entries;
+    }
+
+    private static List<Component> buildActivityDetail(@Nullable JsonObject activity, int selectedIndex) {
+        JsonArray items = readArray(activity, "items");
+        if (items.isEmpty()) {
+            return List.of(Component.literal("recent activity detail is unavailable"));
+        }
+
+        int index = Math.max(0, Math.min(selectedIndex, items.size() - 1));
+        JsonObject item = items.get(index).getAsJsonObject();
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("category: " + readString(item, "category", "-")));
+        lines.add(Component.literal("action: " + readString(item, "action", "-")));
+        lines.add(Component.literal("title: " + readString(item, "title", "-")));
+        lines.add(Component.literal("amountDelta: " + signedNumber(readInt(item, "amountDelta", 0))));
+        lines.add(Component.literal("balanceAfter: " + readInt(item, "balanceAfter", 0)));
+        lines.add(Component.literal("description: " + readString(item, "description", "-")));
+        lines.add(Component.literal("source: " + readString(item, "source", "-")));
+        lines.add(Component.literal("itemId: " + readString(item, "itemId", "-")));
+        lines.add(Component.literal("projectId: " + readString(item, "projectId", "-")));
+        lines.add(Component.literal("mailId: " + readString(item, "mailId", "-")));
+        return lines;
+    }
+
+    private static List<Component> buildSummaryEntries(@Nullable JsonObject summary) {
+        if (summary == null || summary.entrySet().isEmpty()) {
+            return List.of(Component.literal("summary data is not loaded yet"));
+        }
+
+        JsonObject mail = readObject(summary, "mail");
+        JsonObject activity = readObject(summary, "activity");
+        JsonObject status = readObject(summary, "status");
+
+        List<Component> entries = new ArrayList<>();
+        entries.add(Component.literal("Balance: " + formatNumber(readInt(summary, "balance", 0))));
+        entries.add(Component.literal("Unclaimed Mail: " + readInt(mail, "unclaimedRewardCount", 0)));
+        entries.add(Component.literal("Recent Activity: " + readInt(activity, "recentCount", 0)));
+        entries.add(Component.literal("Current Focus: " + readString(status, "currentFocusRegion", "-")));
+        return entries;
+    }
+
+    private static List<Component> buildSummaryDetail(@Nullable JsonObject summary, int selectedIndex) {
+        if (summary == null || summary.entrySet().isEmpty()) {
+            return List.of(Component.literal("summary detail is unavailable"));
+        }
+
+        JsonObject mail = readObject(summary, "mail");
+        JsonObject activity = readObject(summary, "activity");
+        JsonObject invest = readObject(summary, "invest");
+        JsonObject status = readObject(summary, "status");
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("playerId: " + readString(summary, "playerId", "-")));
+        lines.add(Component.literal("balance: " + formatNumber(readInt(summary, "balance", 0))));
+        lines.add(Component.literal("mail.totalCount: " + readInt(mail, "totalCount", 0)));
+        lines.add(Component.literal("mail.unclaimedRewardCount: " + readInt(mail, "unclaimedRewardCount", 0)));
+        lines.add(Component.literal("mail.claimedRewardCount: " + readInt(mail, "claimedRewardCount", 0)));
+        lines.add(Component.literal("mail.claimedRewardAmount: " + readInt(mail, "claimedRewardAmount", 0)));
+        lines.add(Component.literal("activity.recentCount: " + readInt(activity, "recentCount", 0)));
+        lines.add(Component.literal("activity.shopDelta: " + signedNumber(readInt(activity, "shopDelta", 0))));
+        lines.add(Component.literal("activity.investSpendTotal: " + readInt(activity, "investSpendTotal", 0)));
+        lines.add(Component.literal("activity.mailRewardTotal: " + readInt(activity, "mailRewardTotal", 0)));
+        lines.add(Component.literal("invest.activeProjectCount: " + readInt(invest, "activeProjectCount", 0)));
+        lines.add(Component.literal("status.currentFocusRegion: " + readString(status, "currentFocusRegion", "-")));
+        lines.add(Component.literal("status.activeEventCount: " + readInt(status, "activeEventCount", 0)));
+        lines.add(Component.literal("status.activeProjectEffectCount: " + readInt(status, "activeProjectEffectCount", 0)));
+        lines.add(Component.literal("status.dominantRegionCategory: " + readString(status, "dominantRegionCategory", "-")));
+        return lines;
+    }
+
+    private static JsonArray readArray(@Nullable JsonObject root, String key) {
+        if (root == null) {
+            return new JsonArray();
+        }
+        JsonElement element = root.get(key);
+        if (element == null || !element.isJsonArray()) {
+            return new JsonArray();
+        }
+        return element.getAsJsonArray();
+    }
+
+    private static JsonObject readObject(@Nullable JsonObject root, String key) {
+        if (root == null) {
+            return null;
+        }
+        JsonElement element = root.get(key);
+        if (element == null || !element.isJsonObject()) {
+            return null;
+        }
+        return element.getAsJsonObject();
+    }
+
+    private static String readString(@Nullable JsonObject root, String key, String fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement element = root.get(key);
+        if (element == null || element.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            String value = element.getAsString();
+            return value == null || value.isBlank() ? fallback : value;
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static int readInt(@Nullable JsonObject root, String key, int fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement element = root.get(key);
+        if (element == null || element.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            return element.getAsInt();
+        } catch (Exception ignored) {
+            try {
+                return Math.round(element.getAsFloat());
+            } catch (Exception ignoredAgain) {
+                return fallback;
+            }
+        }
+    }
+
+    private static long readLong(@Nullable JsonObject root, String key, long fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement element = root.get(key);
+        if (element == null || element.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            return element.getAsLong();
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static String signedNumber(int value) {
+        if (value > 0) {
+            return "+" + formatNumber(value);
+        }
+        if (value < 0) {
+            return "-" + formatNumber(Math.abs(value));
+        }
+        return "0";
+    }
+
+    private static String formatNumber(int value) {
+        return NumberFormat.getIntegerInstance().format(value);
+    }
+}
+
+```
+\n\n### src/main/java/com/namanseul/farmingmod/client/ui/screen/PlayerOverviewScreen.java
+```java
+package com.namanseul.farmingmod.client.ui.screen;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.namanseul.farmingmod.client.network.UiClientNetworking;
+import com.namanseul.farmingmod.client.ui.player.PlayerOverviewData;
+import com.namanseul.farmingmod.client.ui.player.PlayerOverviewFormatter;
+import com.namanseul.farmingmod.client.ui.player.PlayerOverviewParser;
+import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
+import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
+import com.namanseul.farmingmod.network.UiAction;
+import com.namanseul.farmingmod.network.payload.UiResponsePayload;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+public final class PlayerOverviewScreen extends BaseTabbedScreen {
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
+            .withZone(ZoneId.systemDefault());
+    private static String lastSelectedTab = PlayerOverviewFormatter.TAB_WALLET;
+
+    private final Screen returnScreen;
+    private final Map<UiAction, String> pendingRequestIds = new HashMap<>();
+
+    private UiListPanel listPanel;
+    private List<Component> detailLines = List.of();
+
+    private JsonObject walletData = new JsonObject();
+    private JsonObject activityData = new JsonObject();
+    private JsonObject summaryData = new JsonObject();
+
+    private boolean walletLoaded;
+    private boolean activityLoaded;
+    private boolean summaryLoaded;
+    private boolean loading;
+
+    private int frameX;
+    private int frameY;
+    private int frameWidth;
+    private int frameHeight;
+
+    private int summaryX;
+    private int summaryY;
+    private int summaryWidth;
+    private int summaryHeight;
+
+    private int listX;
+    private int listY;
+    private int listWidth;
+    private int listHeight;
+
+    private int detailX;
+    private int detailY;
+    private int detailWidth;
+    private int detailHeight;
+
+    public PlayerOverviewScreen(@Nullable Screen returnScreen) {
+        super(Component.translatable("screen.namanseulfarming.player.title"));
+        this.returnScreen = returnScreen;
+        registerTabs();
+        setInitialTab(lastSelectedTab);
+    }
+
+    public static PlayerOverviewScreen openStandalone() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof PlayerOverviewScreen current) {
+            return current;
+        }
+
+        Screen parent = minecraft.screen instanceof GameHubScreen ? minecraft.screen : new GameHubScreen();
+        PlayerOverviewScreen screen = new PlayerOverviewScreen(parent);
+        minecraft.setScreen(screen);
+        return screen;
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        recalcLayout();
+        initCommonButtons(frameX + frameWidth - 4, frameY + 8);
+        if (closeButton != null) {
+            closeButton.setMessage(Component.translatable("screen.namanseulfarming.player.back"));
+        }
+        initTabButtons(frameX + 10, frameY + 34, 92, 20, 4);
+        listPanel = new UiListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
+        updateTabContent();
+        requestOverview(false);
+    }
+
+    @Override
+    public void onClose() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (returnScreen != null) {
+            minecraft.setScreen(returnScreen);
+            return;
+        }
+        minecraft.setScreen(new GameHubScreen());
+    }
+
+    @Override
+    protected void onRefreshPressed() {
+        requestOverview(true);
+    }
+
+    @Override
+    protected void onTabChanged(String tabId) {
+        lastSelectedTab = tabId;
+        if (PlayerOverviewFormatter.TAB_WALLET.equals(tabId) && !walletLoaded) {
+            requestWallet(false);
+        } else if (PlayerOverviewFormatter.TAB_ACTIVITY.equals(tabId) && !activityLoaded) {
+            requestActivity(false);
+        } else if (PlayerOverviewFormatter.TAB_SUMMARY.equals(tabId) && !summaryLoaded) {
+            requestSummary(false);
+        }
+        updateTabContent();
+    }
+
+    public void handleServerResponse(UiResponsePayload payload) {
+        if (payload.action() == UiAction.OPEN) {
+            return;
+        }
+
+        String pendingRequestId = pendingRequestIds.get(payload.action());
+        if (pendingRequestId != null && !pendingRequestId.equals(payload.requestId())) {
+            return;
+        }
+        pendingRequestIds.remove(payload.action());
+        loading = !pendingRequestIds.isEmpty();
+        if (!loading) {
+            setLoading(false);
+        }
+
+        if (!payload.success()) {
+            setError(payload.error() == null ? "player overview request failed" : payload.error());
+            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
+                    Component.translatable("screen.namanseulfarming.player.banner.failed")));
+            updateActionButtons();
+            return;
+        }
+
+        try {
+            switch (payload.action()) {
+                case PLAYER_OVERVIEW, PLAYER_REFRESH -> applyOverview(payload.dataJson());
+                case PLAYER_WALLET -> {
+                    walletData = PlayerOverviewParser.parseWallet(payload.dataJson());
+                    walletLoaded = true;
+                }
+                case PLAYER_ACTIVITY -> {
+                    activityData = PlayerOverviewParser.parseActivity(payload.dataJson());
+                    activityLoaded = true;
+                }
+                case PLAYER_SUMMARY -> {
+                    summaryData = PlayerOverviewParser.parseSummary(payload.dataJson());
+                    summaryLoaded = true;
+                }
+                default -> {
+                    // ignore unrelated actions
+                }
+            }
+
+            setError(null);
+            updateTabContent();
+            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
+                    Component.translatable("screen.namanseulfarming.player.banner.loaded")));
+        } catch (Exception ex) {
+            setError("failed to parse player overview response");
+            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
+                    Component.translatable("screen.namanseulfarming.player.banner.failed")));
+        }
+        updateActionButtons();
+    }
+
+    @Override
+    protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        recalcLayout();
+        updateActionButtons();
+
+        renderPanel(graphics, frameX, frameY, frameWidth, frameHeight);
+        renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
+
+        renderPanel(graphics, summaryX, summaryY, summaryWidth, summaryHeight);
+        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.player.summary"), summaryX + 6, summaryY + 6);
+        renderSummaryLines(graphics);
+
+        renderPanel(graphics, listX, listY, listWidth, listHeight);
+        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.player.list"), listX + 6, listY + 6);
+        if (listPanel != null) {
+            listPanel.render(graphics, font, mouseX, mouseY);
+        }
+
+        renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
+        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.player.detail"), detailX + 6, detailY + 6);
+        renderDetailLines(graphics);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (listPanel != null && listPanel.mouseClicked(mouseX, mouseY, button)) {
+            updateDetailLines();
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (listPanel != null && listPanel.mouseScrolled(mouseX, mouseY, scrollY)) {
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    private void registerTabs() {
+        addTab(PlayerOverviewFormatter.TAB_WALLET, Component.translatable("screen.namanseulfarming.player.tab.wallet"));
+        addTab(PlayerOverviewFormatter.TAB_ACTIVITY, Component.translatable("screen.namanseulfarming.player.tab.activity"));
+        addTab(PlayerOverviewFormatter.TAB_SUMMARY, Component.translatable("screen.namanseulfarming.player.tab.summary"));
+    }
+
+    private void requestOverview(boolean forceRefresh) {
+        loading = true;
+        setLoading(true, Component.translatable("screen.namanseulfarming.player.loading"));
+        setError(null);
+        String requestId = forceRefresh
+                ? UiClientNetworking.requestPlayerRefresh()
+                : UiClientNetworking.requestPlayerOverview(false);
+        pendingRequestIds.put(forceRefresh ? UiAction.PLAYER_REFRESH : UiAction.PLAYER_OVERVIEW, requestId);
+        updateActionButtons();
+    }
+
+    private void requestWallet(boolean forceRefresh) {
+        loading = true;
+        setLoading(true, Component.translatable("screen.namanseulfarming.player.loading"));
+        setError(null);
+        String requestId = UiClientNetworking.requestPlayerWallet(forceRefresh);
+        pendingRequestIds.put(UiAction.PLAYER_WALLET, requestId);
+        updateActionButtons();
+    }
+
+    private void requestActivity(boolean forceRefresh) {
+        loading = true;
+        setLoading(true, Component.translatable("screen.namanseulfarming.player.loading"));
+        setError(null);
+        String requestId = UiClientNetworking.requestPlayerActivity(forceRefresh);
+        pendingRequestIds.put(UiAction.PLAYER_ACTIVITY, requestId);
+        updateActionButtons();
+    }
+
+    private void requestSummary(boolean forceRefresh) {
+        loading = true;
+        setLoading(true, Component.translatable("screen.namanseulfarming.player.loading"));
+        setError(null);
+        String requestId = UiClientNetworking.requestPlayerSummary(forceRefresh);
+        pendingRequestIds.put(UiAction.PLAYER_SUMMARY, requestId);
+        updateActionButtons();
+    }
+
+    private void applyOverview(String json) {
+        PlayerOverviewData overview = PlayerOverviewParser.parseOverview(json);
+        walletData = overview.wallet();
+        activityData = overview.activity();
+        summaryData = overview.summary();
+        walletLoaded = true;
+        activityLoaded = true;
+        summaryLoaded = true;
+
+        if (overview.partial()) {
+            String note = overview.partialNotes().isEmpty() ? "partial response" : overview.partialNotes().get(0);
+            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
+                    Component.literal("Some sections failed: " + note)));
+        }
+    }
+
+    private void updateTabContent() {
+        if (listPanel == null) {
+            return;
+        }
+        List<Component> entries = PlayerOverviewFormatter.buildListEntries(
+                activeTabId(),
+                walletData,
+                activityData,
+                summaryData
+        );
+        listPanel.setEntries(entries);
+        if (entries.isEmpty()) {
+            setEmpty(Component.translatable("screen.namanseulfarming.player.empty"));
+        } else {
+            setEmpty(null);
+        }
+        updateDetailLines();
+    }
+
+    private void updateDetailLines() {
+        int selectedIndex = listPanel == null ? 0 : listPanel.selectedIndex();
+        detailLines = PlayerOverviewFormatter.buildDetailLines(
+                activeTabId(),
+                walletData,
+                activityData,
+                summaryData,
+                selectedIndex
+        );
+    }
+
+    private void renderSummaryLines(GuiGraphics graphics) {
+        int x = summaryX + 8;
+        int y = summaryY + 20;
+        int color = 0xDDE6F9;
+
+        int balance = readInt(walletData, "balance", readInt(summaryData, "balance", 0));
+        JsonObject mail = readObject(summaryData, "mail");
+        JsonObject activity = readObject(summaryData, "activity");
+        JsonObject status = readObject(summaryData, "status");
+        long generatedAt = readLong(summaryData, "generatedAtEpochMillis",
+                readLong(activityData, "generatedAtEpochMillis", 0L));
+
+        graphics.drawString(font, Component.literal("Balance: " + balance), x, y, color, false);
+        graphics.drawString(font, Component.literal("Unclaimed Mail: " + readInt(mail, "unclaimedRewardCount", 0)),
+                x + 160, y, color, false);
+        graphics.drawString(font, Component.literal("Recent Activity: " + readInt(activity, "recentCount",
+                readInt(activityData, "count", 0))), x, y + 12, color, false);
+        graphics.drawString(font, Component.literal("Focus: " + readString(status, "currentFocusRegion", "-")),
+                x + 160, y + 12, color, false);
+        graphics.drawString(font, Component.literal("Updated: " + formatTime(generatedAt)), x, y + 24, color, false);
+    }
+
+    private void renderDetailLines(GuiGraphics graphics) {
+        int lineY = detailY + 22;
+        int maxY = detailY + detailHeight - 10;
+        for (Component line : detailLines) {
+            if (lineY > maxY) {
+                break;
+            }
+            graphics.drawString(font, line, detailX + 8, lineY, 0xEAF1FF, false);
+            lineY += 12;
+        }
+    }
+
+    private void updateActionButtons() {
+        if (refreshButton != null) {
+            refreshButton.active = !loading;
+        }
+        if (closeButton != null) {
+            closeButton.active = true;
+        }
+    }
+
+    private void recalcLayout() {
+        frameWidth = Math.min(486, width - 20);
+        frameHeight = Math.min(322, height - 36);
+        frameX = (width - frameWidth) / 2;
+        frameY = (height - frameHeight) / 2;
+
+        summaryX = frameX + 10;
+        summaryY = frameY + 58;
+        summaryWidth = frameWidth - 20;
+        summaryHeight = 60;
+
+        listX = frameX + 10;
+        listY = frameY + 124;
+        listWidth = 182;
+        listHeight = frameHeight - 134;
+
+        detailX = listX + listWidth + 8;
+        detailY = listY;
+        detailWidth = frameWidth - 20 - listWidth - 8;
+        detailHeight = listHeight;
+    }
+
+    private static JsonObject readObject(@Nullable JsonObject root, String key) {
+        if (root == null) {
+            return null;
+        }
+        JsonElement value = root.get(key);
+        if (value == null || !value.isJsonObject()) {
+            return null;
+        }
+        return value.getAsJsonObject();
+    }
+
+    private static int readInt(@Nullable JsonObject root, String key, int fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            return value.getAsInt();
+        } catch (Exception ignored) {
+            try {
+                return Math.round(value.getAsFloat());
+            } catch (Exception ignoredAgain) {
+                return fallback;
+            }
+        }
+    }
+
+    private static long readLong(@Nullable JsonObject root, String key, long fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            return value.getAsLong();
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static String readString(@Nullable JsonObject root, String key, String fallback) {
+        if (root == null) {
+            return fallback;
+        }
+        JsonElement value = root.get(key);
+        if (value == null || value.isJsonNull()) {
+            return fallback;
+        }
+        try {
+            String parsed = value.getAsString();
+            return parsed == null || parsed.isBlank() ? fallback : parsed;
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static String formatTime(long epochMillis) {
+        if (epochMillis <= 0) {
+            return "-";
+        }
+        return TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
+    }
+}
+
+```
+\n\n### src/main/resources/assets/namanseulfarming/lang/en_us.json
+```json
+{
+  "itemGroup.namanseulfarming": "Example Mod Tab",
+  "block.namanseulfarming.example_block": "Example Block",
+  "item.namanseulfarming.example_item": "Example Item",
+
+  "namanseulfarming.configuration.title": "Namanseul Farming Configs",
+  "namanseulfarming.configuration.section.namanseulfarming.common.toml": "Namanseul Farming Configs",
+  "namanseulfarming.configuration.section.namanseulfarming.common.toml.title": "Namanseul Farming Configs",
+  "namanseulfarming.configuration.items": "Item List",
+  "namanseulfarming.configuration.logDirtBlock": "Log Dirt Block",
+  "namanseulfarming.configuration.magicNumberIntroduction": "Magic Number Text",
+  "namanseulfarming.configuration.magicNumber": "Magic Number",
+  "namanseulfarming.configuration.backendBaseUrl": "Backend Base URL",
+  "namanseulfarming.configuration.backendTimeoutMs": "Backend Timeout (ms)",
+  "namanseulfarming.configuration.summaryCacheTtlSeconds": "Summary Cache TTL (sec)",
+  "namanseulfarming.configuration.networkDebugLog": "Network Debug Logs",
+
+  "key.categories.namanseulfarming": "Namanseul Farming",
+  "key.namanseulfarming.open_hub": "Open Game Hub",
+
+  "screen.namanseulfarming.hub.title": "Game Hub",
+  "screen.namanseulfarming.hub.refresh": "Refresh",
+  "screen.namanseulfarming.hub.close": "Close",
+  "screen.namanseulfarming.hub.loading": "Loading summary from server...",
+  "screen.namanseulfarming.hub.summary": "Summary",
+  "screen.namanseulfarming.hub.summary_waiting": "Summary will appear after first server response.",
+  "screen.namanseulfarming.hub.list": "List",
+  "screen.namanseulfarming.hub.detail": "Detail",
+  "screen.namanseulfarming.hub.empty": "No entries for the selected tab.",
+  "screen.namanseulfarming.hub.banner.updated": "Summary updated at %s",
+  "screen.namanseulfarming.hub.banner.failed": "Summary request failed.",
+  "screen.namanseulfarming.shop.open_button": "Open Shop",
+  "screen.namanseulfarming.mail.open_button": "Open Mail",
+  "screen.namanseulfarming.invest.open_button": "Open Invest",
+  "screen.namanseulfarming.status.open_button": "Open Status",
+  "screen.namanseulfarming.player.open_button": "Open Overview",
+  "screen.namanseulfarming.shop.title": "Shop",
+  "screen.namanseulfarming.shop.back": "Back",
+  "screen.namanseulfarming.shop.loading_items": "Loading shop items...",
+  "screen.namanseulfarming.shop.items": "Items",
+  "screen.namanseulfarming.shop.detail": "Item Detail",
+  "screen.namanseulfarming.shop.preview": "Preview",
+  "screen.namanseulfarming.shop.actions": "Actions",
+  "screen.namanseulfarming.shop.quantity": "Quantity",
+  "screen.namanseulfarming.shop.preview_buy": "P.Buy",
+  "screen.namanseulfarming.shop.preview_sell": "P.Sell",
+  "screen.namanseulfarming.shop.buy": "Buy",
+  "screen.namanseulfarming.shop.sell": "Sell",
+  "screen.namanseulfarming.shop.register_item": "Register Item",
+  "screen.namanseulfarming.shop.inventory_picker_title": "Select From Inventory",
+  "screen.namanseulfarming.shop.inventory_select": "Select",
+  "screen.namanseulfarming.shop.inventory_cancel": "Cancel",
+  "screen.namanseulfarming.shop.no_items": "No shop items found.",
+  "screen.namanseulfarming.shop.no_selection": "Select an item from the list.",
+  "screen.namanseulfarming.shop.preview_waiting": "Run buy/sell preview to see pricing details.",
+  "screen.namanseulfarming.shop.preview_loading": "Preview request in progress...",
+  "screen.namanseulfarming.shop.trade_loading": "Trade request in progress...",
+  "screen.namanseulfarming.shop.banner.list_loaded": "Shop item list loaded.",
+  "screen.namanseulfarming.shop.banner.list_failed": "Shop item list request failed.",
+  "screen.namanseulfarming.shop.banner.preview_ready": "Preview result updated.",
+  "screen.namanseulfarming.shop.banner.trade_success": "%s request completed.",
+  "screen.namanseulfarming.mail.title": "Mail",
+  "screen.namanseulfarming.mail.back": "Back",
+  "screen.namanseulfarming.mail.loading_mails": "Loading mailbox from server...",
+  "screen.namanseulfarming.mail.list": "Mailbox",
+  "screen.namanseulfarming.mail.detail": "Mail Detail",
+  "screen.namanseulfarming.mail.reward": "Reward",
+  "screen.namanseulfarming.mail.actions": "Actions",
+  "screen.namanseulfarming.mail.claim": "Claim",
+  "screen.namanseulfarming.mail.claim_loading": "Claim request in progress...",
+  "screen.namanseulfarming.mail.no_mails": "No mails found.",
+  "screen.namanseulfarming.mail.no_selection": "Select a mail from the list.",
+  "screen.namanseulfarming.mail.banner.list_loaded": "Mailbox loaded.",
+  "screen.namanseulfarming.mail.banner.list_failed": "Mailbox request failed.",
+  "screen.namanseulfarming.mail.banner.claim_success": "Claim completed. Reward: %s",
+  "screen.namanseulfarming.invest.title": "Invest",
+  "screen.namanseulfarming.invest.back": "Back",
+  "screen.namanseulfarming.invest.loading_projects": "Loading projects from server...",
+  "screen.namanseulfarming.invest.list": "Projects",
+  "screen.namanseulfarming.invest.detail": "Project Detail",
+  "screen.namanseulfarming.invest.progress": "Progress / Completion",
+  "screen.namanseulfarming.invest.actions": "Actions",
+  "screen.namanseulfarming.invest.amount": "Amount",
+  "screen.namanseulfarming.invest.invest_button": "Invest",
+  "screen.namanseulfarming.invest.investing": "Invest request in progress...",
+  "screen.namanseulfarming.invest.no_projects": "No active projects found.",
+  "screen.namanseulfarming.invest.no_selection": "Select a project from the list.",
+  "screen.namanseulfarming.invest.progress_waiting": "Progress and completion info will appear after selection.",
+  "screen.namanseulfarming.invest.banner.list_loaded": "Project list loaded.",
+  "screen.namanseulfarming.invest.banner.list_failed": "Project list request failed.",
+  "screen.namanseulfarming.invest.banner.invest_success": "Invest completed. Amount: %s",
+  "screen.namanseulfarming.status.title": "Status",
+  "screen.namanseulfarming.status.back": "Back",
+  "screen.namanseulfarming.status.loading": "Loading status data from server...",
+  "screen.namanseulfarming.status.summary": "Overview",
+  "screen.namanseulfarming.status.summary_waiting": "Status overview will appear after first response.",
+  "screen.namanseulfarming.status.list": "List",
+  "screen.namanseulfarming.status.detail": "Detail",
+  "screen.namanseulfarming.status.empty": "No status entries available.",
+  "screen.namanseulfarming.status.tab.focus": "Focus",
+  "screen.namanseulfarming.status.tab.region": "Region",
+  "screen.namanseulfarming.status.tab.event": "Event",
+  "screen.namanseulfarming.status.tab.completion": "Completion",
+  "screen.namanseulfarming.status.banner.loaded": "Status data loaded.",
+  "screen.namanseulfarming.status.banner.failed": "Status request failed.",
+  "screen.namanseulfarming.player.title": "Player Overview",
+  "screen.namanseulfarming.player.back": "Back",
+  "screen.namanseulfarming.player.loading": "Loading player overview from server...",
+  "screen.namanseulfarming.player.summary": "Overview",
+  "screen.namanseulfarming.player.list": "List",
+  "screen.namanseulfarming.player.detail": "Detail",
+  "screen.namanseulfarming.player.empty": "No player data available.",
+  "screen.namanseulfarming.player.tab.wallet": "Wallet",
+  "screen.namanseulfarming.player.tab.activity": "Recent Activity",
+  "screen.namanseulfarming.player.tab.summary": "Summary",
+  "screen.namanseulfarming.player.banner.loaded": "Player overview loaded.",
+  "screen.namanseulfarming.player.banner.failed": "Player overview request failed."
+}
+```
