@@ -13,7 +13,7 @@ public final class PlayerOverviewFormatter {
     public static final String TAB_ACTIVITY = "activity";
     public static final String TAB_SUMMARY = "summary";
 
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm")
             .withZone(ZoneId.systemDefault());
 
     private PlayerOverviewFormatter() {}
@@ -54,20 +54,19 @@ public final class PlayerOverviewFormatter {
             boolean partial
     ) {
         if (!wallet.available() && !activity.available() && !summary.available()) {
-            return List.of(Component.literal("Waiting for player overview..."));
+            return List.of(Component.literal("Loading player overview..."));
         }
 
         int balance = summary.available() ? summary.balance() : wallet.balance();
+        int rewardCount = summary.unclaimedRewardCount();
         int recentCount = summary.available() ? summary.recentActivityCount() : activity.totalCount();
-        String focus = summary.available() ? summary.focusRegion() : "-";
 
         List<Component> lines = new ArrayList<>();
         lines.add(Component.literal("Balance: " + formatNumber(balance)));
-        lines.add(Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()));
+        lines.add(Component.literal("Rewards to claim: " + rewardCount));
         lines.add(Component.literal("Recent actions: " + recentCount));
-        lines.add(Component.literal("Current focus: " + focus));
         if (partial) {
-            lines.add(Component.literal("Some values are temporarily unavailable."));
+            lines.add(Component.literal("Some details are still updating."));
         }
         return lines;
     }
@@ -77,17 +76,16 @@ public final class PlayerOverviewFormatter {
             PlayerOverviewData.SummarySnapshot summary
     ) {
         if (!wallet.available() && !summary.available()) {
-            return List.of(Component.literal("Balance information is loading..."));
+            return List.of(Component.literal("Balance is loading..."));
         }
 
         int balance = summary.available() ? summary.balance() : wallet.balance();
+        int rewardCount = summary.unclaimedRewardCount();
+
         List<Component> entries = new ArrayList<>();
         entries.add(Component.literal("Available coins: " + formatNumber(balance)));
-        if (summary.unclaimedRewardCount() > 0) {
-            entries.add(Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()));
-        }
-        if (summary.activeProjectCount() > 0) {
-            entries.add(Component.literal("Active projects: " + summary.activeProjectCount()));
+        if (rewardCount > 0) {
+            entries.add(Component.literal("Rewards to claim: " + rewardCount));
         }
         return entries;
     }
@@ -97,18 +95,16 @@ public final class PlayerOverviewFormatter {
             PlayerOverviewData.SummarySnapshot summary
     ) {
         if (!wallet.available() && !summary.available()) {
-            return List.of(Component.literal("No wallet details yet."));
+            return List.of(Component.literal("Wallet details are not ready yet."));
         }
 
         int balance = summary.available() ? summary.balance() : wallet.balance();
+        int rewardCount = summary.unclaimedRewardCount();
+
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("Spendable balance: " + formatNumber(balance)));
-        lines.add(Component.literal("Use this balance in Shop and Investment tabs."));
-        if (summary.unclaimedRewardCount() > 0) {
-            lines.add(Component.literal("Claim " + summary.unclaimedRewardCount() + " reward mails for extra funds."));
-        }
-        if (summary.shopNetDelta() != 0) {
-            lines.add(Component.literal("Recent shop net: " + signedNumber(summary.shopNetDelta())));
+        lines.add(Component.literal("Spendable now: " + formatNumber(balance)));
+        if (rewardCount > 0) {
+            lines.add(Component.literal("Claim " + rewardCount + " rewards to increase funds."));
         }
         return lines;
     }
@@ -120,20 +116,19 @@ public final class PlayerOverviewFormatter {
 
         List<Component> entries = new ArrayList<>();
         for (PlayerOverviewData.ActivityItem item : activity.items()) {
-            entries.add(Component.literal(
-                    formatTime(item.occurredAtEpochMillis())
-                            + " | "
-                            + item.title()
-                            + " | "
-                            + signedNumber(item.amountDelta())
-            ));
+            StringBuilder line = new StringBuilder();
+            line.append(formatTime(item.occurredAtEpochMillis())).append(" | ").append(item.title());
+            if (item.amountDelta() != 0) {
+                line.append(" | ").append(signedNumber(item.amountDelta()));
+            }
+            entries.add(Component.literal(line.toString()));
         }
         return entries;
     }
 
     private static List<Component> buildActivityDetail(PlayerOverviewData.ActivitySnapshot activity, int selectedIndex) {
         if (!activity.available() || activity.items().isEmpty()) {
-            return List.of(Component.literal("Activity detail will appear here."));
+            return List.of(Component.literal("Select an activity to view details."));
         }
 
         int index = clampIndex(selectedIndex, activity.items().size());
@@ -141,53 +136,45 @@ public final class PlayerOverviewFormatter {
 
         List<Component> lines = new ArrayList<>();
         lines.add(Component.literal(selected.title()));
-        lines.add(Component.literal("Coin change: " + signedNumber(selected.amountDelta())));
-        if (selected.hasBalanceAfter()) {
-            lines.add(Component.literal("Balance after action: " + formatNumber(selected.balanceAfter())));
+        if (selected.amountDelta() != 0) {
+            lines.add(Component.literal("Coin change: " + signedNumber(selected.amountDelta())));
         }
-        lines.add(Component.literal("Recorded at: " + formatTime(selected.occurredAtEpochMillis())));
         if (!selected.description().isBlank()) {
             lines.add(Component.literal(selected.description()));
         }
+        lines.add(Component.literal("Time: " + formatTime(selected.occurredAtEpochMillis())));
         return lines;
     }
 
     private static List<Component> buildSummaryEntries(PlayerOverviewData.SummarySnapshot summary) {
         if (!summary.available()) {
-            return List.of(Component.literal("Summary information is loading..."));
+            return List.of(Component.literal("Summary is loading..."));
         }
 
         return List.of(
-                Component.literal("Current focus: " + summary.focusRegion()),
-                Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()),
-                Component.literal("Recent actions: " + summary.recentActivityCount()),
-                Component.literal("Active events: " + summary.activeEventCount())
+                Component.literal("Balance: " + formatNumber(summary.balance())),
+                Component.literal("Rewards to claim: " + summary.unclaimedRewardCount()),
+                Component.literal("Recent actions: " + summary.recentActivityCount())
         );
     }
 
     private static List<Component> buildSummaryDetail(PlayerOverviewData.SummarySnapshot summary, int selectedIndex) {
         if (!summary.available()) {
-            return List.of(Component.literal("Summary detail is not available yet."));
+            return List.of(Component.literal("Summary details are not ready yet."));
         }
 
-        return switch (clampIndex(selectedIndex, 4)) {
+        return switch (clampIndex(selectedIndex, 3)) {
             case 0 -> List.of(
-                    Component.literal("Current focus region: " + summary.focusRegion()),
-                    Component.literal("Dominant category: " + safeText(summary.dominantRegionCategory(), "-"))
+                    Component.literal("Available balance: " + formatNumber(summary.balance())),
+                    Component.literal("Use coins for shop purchases and project contributions.")
             );
             case 1 -> List.of(
-                    Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()),
-                    Component.literal("Total reward coins gained: " + formatNumber(summary.mailRewardTotal()))
-            );
-            case 2 -> List.of(
-                    Component.literal("Recent actions tracked: " + summary.recentActivityCount()),
-                    Component.literal("Shop net change: " + signedNumber(summary.shopNetDelta())),
-                    Component.literal("Investment spend total: " + formatNumber(summary.investSpendTotal()))
+                    Component.literal("Rewards waiting: " + summary.unclaimedRewardCount()),
+                    Component.literal("Claim rewards from Mail to add funds.")
             );
             default -> List.of(
-                    Component.literal("Active events: " + summary.activeEventCount()),
-                    Component.literal("Active project effects: " + summary.activeProjectEffectCount()),
-                    Component.literal("Active projects: " + summary.activeProjectCount())
+                    Component.literal("Recent actions tracked: " + summary.recentActivityCount()),
+                    Component.literal("Current focus region: " + safeText(summary.focusRegion(), "-"))
             );
         };
     }
@@ -201,7 +188,7 @@ public final class PlayerOverviewFormatter {
 
     private static String formatTime(long epochMillis) {
         if (epochMillis <= 0) {
-            return "--:--:--";
+            return "--:--";
         }
         return TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
     }
