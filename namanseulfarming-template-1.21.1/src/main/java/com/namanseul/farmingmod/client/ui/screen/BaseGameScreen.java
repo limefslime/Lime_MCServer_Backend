@@ -7,14 +7,13 @@ import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
 import com.namanseul.farmingmod.client.ui.widget.UiPanel;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 public abstract class BaseGameScreen extends Screen {
-    private static final int BANNER_HEIGHT = 18;
     private static final int COMMON_BUTTON_WIDTH = 72;
     private static final int COMMON_BUTTON_HEIGHT = 20;
     private static final int COMMON_BUTTON_GAP = 6;
@@ -22,7 +21,6 @@ public abstract class BaseGameScreen extends Screen {
     protected LoadingState loadingState = LoadingState.idle();
     protected ErrorState errorState = ErrorState.none();
     protected EmptyState emptyState = EmptyState.none();
-    protected UiMessageBanner messageBanner;
 
     protected Button refreshButton;
     protected Button closeButton;
@@ -32,14 +30,14 @@ public abstract class BaseGameScreen extends Screen {
     }
 
     protected void initCommonButtons(int rightX, int topY) {
-        refreshButton = addRenderableWidget(UiButton.create(
-                Component.translatable("screen.namanseulfarming.hub.refresh"),
-                0,
-                0,
-                COMMON_BUTTON_WIDTH,
-                COMMON_BUTTON_HEIGHT,
-                button -> onRefreshPressed()
-        ));
+        if (refreshButton != null) {
+            removeWidget(refreshButton);
+            refreshButton = null;
+        }
+
+        if (closeButton != null) {
+            removeWidget(closeButton);
+        }
 
         closeButton = addRenderableWidget(UiButton.create(
                 Component.translatable("screen.namanseulfarming.hub.close"),
@@ -49,6 +47,21 @@ public abstract class BaseGameScreen extends Screen {
                 COMMON_BUTTON_HEIGHT,
                 button -> onClose()
         ));
+
+        positionCommonButtons(rightX, topY);
+    }
+
+    protected void initRefreshButton(int rightX, int topY) {
+        if (refreshButton == null) {
+            refreshButton = addRenderableWidget(UiButton.create(
+                    Component.translatable("screen.namanseulfarming.hub.refresh"),
+                    0,
+                    0,
+                    COMMON_BUTTON_WIDTH,
+                    COMMON_BUTTON_HEIGHT,
+                    button -> onRefreshPressed()
+            ));
+        }
         positionCommonButtons(rightX, topY);
     }
 
@@ -58,6 +71,7 @@ public abstract class BaseGameScreen extends Screen {
             refreshButton.setWidth(COMMON_BUTTON_WIDTH);
             refreshButton.setHeight(COMMON_BUTTON_HEIGHT);
         }
+
         if (closeButton != null) {
             closeButton.setPosition(rightX - (COMMON_BUTTON_WIDTH + 4), topY);
             closeButton.setWidth(COMMON_BUTTON_WIDTH);
@@ -83,13 +97,8 @@ public abstract class BaseGameScreen extends Screen {
             renderEmptyState(graphics, emptyState.message());
         }
 
-        // If a bottom banner is already showing the error, avoid drawing a second overlapping error line.
-        if (errorState.hasError() && messageBanner == null) {
+        if (errorState.hasError()) {
             renderErrorMessage(graphics, errorState.message());
-        }
-
-        if (messageBanner != null) {
-            messageBanner.render(graphics, font, 8, height - BANNER_HEIGHT - 6, width - 16, BANNER_HEIGHT);
         }
 
         if (loadingState.active()) {
@@ -109,6 +118,7 @@ public abstract class BaseGameScreen extends Screen {
         if (panelWidth <= 2 || panelHeight <= 2) {
             return;
         }
+
         int left = Math.max(0, x + 1);
         int top = Math.max(0, y + 1);
         int right = Math.min(width, x + panelWidth - 1);
@@ -136,9 +146,6 @@ public abstract class BaseGameScreen extends Screen {
 
     protected void renderEmptyState(GuiGraphics graphics, Component message) {
         int y = height - 30;
-        if (messageBanner != null) {
-            y -= (BANNER_HEIGHT + 8);
-        }
         if (errorState.hasError()) {
             y -= 12;
         }
@@ -162,7 +169,7 @@ public abstract class BaseGameScreen extends Screen {
     }
 
     public void setMessageBanner(@Nullable UiMessageBanner banner) {
-        this.messageBanner = banner;
+        // no-op: shared base layout is intentionally banner-free.
     }
 
     protected static int clampInt(int value, int min, int max) {

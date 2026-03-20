@@ -8,7 +8,11 @@ import org.jetbrains.annotations.Nullable;
 public interface HubTabView {
     Component tabLabel();
 
-    List<Component> buildListEntries(@Nullable HubSummaryData summary);
+    Component openButtonLabel();
 
-    List<Component> buildDetailLines(@Nullable HubSummaryData summary, int selectedIndex);
+    Component actionTitle();
+
+    Component actionHint();
+
+    List<Component> summaryLines(@Nullable HubSummaryData summary);
 }

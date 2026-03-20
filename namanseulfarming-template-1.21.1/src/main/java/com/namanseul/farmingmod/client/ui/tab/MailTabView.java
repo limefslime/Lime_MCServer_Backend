@@ -1,7 +1,6 @@
 package com.namanseul.farmingmod.client.ui.tab;
 
 import com.namanseul.farmingmod.network.payload.HubSummaryData;
-import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -13,25 +12,29 @@ public final class MailTabView implements HubTabView {
     }
 
     @Override
-    public List<Component> buildListEntries(@Nullable HubSummaryData summary) {
-        List<Component> entries = new ArrayList<>();
-        entries.add(Component.literal("Mail UI ready for stage 3"));
-        entries.add(Component.literal("Use Open Mail button to enter"));
-        entries.add(Component.literal("List / detail / claim flow enabled"));
-        if (summary != null) {
-            entries.add(Component.literal("Unclaimed mail preview: " + summary.unclaimedMailCount()));
-        }
-        return entries;
+    public Component openButtonLabel() {
+        return Component.translatable("screen.namanseulfarming.mail.open_button");
     }
 
     @Override
-    public List<Component> buildDetailLines(@Nullable HubSummaryData summary, int selectedIndex) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("[Mail]"));
-        lines.add(Component.literal("Open Mail screen for mailbox list/detail/claim actions."));
-        if (summary != null) {
-            lines.add(Component.literal("Server summary unclaimed: " + summary.unclaimedMailCount()));
+    public Component actionTitle() {
+        return Component.literal("Open Mailbox");
+    }
+
+    @Override
+    public Component actionHint() {
+        return Component.literal("Claim pending rewards and clear unread items.");
+    }
+
+    @Override
+    public List<Component> summaryLines(@Nullable HubSummaryData summary) {
+        if (summary == null) {
+            return List.of(Component.literal("Loading mailbox snapshot..."));
         }
-        return lines;
+
+        return List.of(
+                Component.literal("Unclaimed rewards: " + summary.unclaimedMailCount()),
+                Component.literal("Visit mailbox if this number is not zero.")
+        );
     }
 }

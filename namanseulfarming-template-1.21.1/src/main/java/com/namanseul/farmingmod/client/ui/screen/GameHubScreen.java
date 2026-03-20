@@ -1,7 +1,5 @@
 package com.namanseul.farmingmod.client.ui.screen;
 
-import com.namanseul.farmingmod.Config;
-import com.namanseul.farmingmod.NamanseulFarming;
 import com.namanseul.farmingmod.client.network.UiClientNetworking;
 import com.namanseul.farmingmod.client.ui.tab.HubTabView;
 import com.namanseul.farmingmod.client.ui.tab.InvestTabView;
@@ -10,14 +8,10 @@ import com.namanseul.farmingmod.client.ui.tab.PlayerTabView;
 import com.namanseul.farmingmod.client.ui.tab.RegionTabView;
 import com.namanseul.farmingmod.client.ui.tab.ShopTabView;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
-import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
-import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.HubSummaryData;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,38 +27,30 @@ public final class GameHubScreen extends BaseTabbedScreen {
     private static final String TAB_REGION = "region";
     private static final String TAB_PLAYER = "player";
 
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
-            .withZone(ZoneId.systemDefault());
-
     private static String lastSelectedTab = TAB_SHOP;
 
     private final Map<String, HubTabView> tabViews = new LinkedHashMap<>();
 
     private HubSummaryData summaryData;
-    private UiListPanel listPanel;
-    private List<Component> detailLines = List.of();
+    private List<Component> summaryLines = List.of();
     private String pendingRequestId;
     private Button openTabButton;
+    private boolean summaryPartial;
 
     private int frameX;
     private int frameY;
     private int frameWidth;
     private int frameHeight;
 
+    private int actionX;
+    private int actionY;
+    private int actionWidth;
+    private int actionHeight;
+
     private int summaryX;
     private int summaryY;
     private int summaryWidth;
     private int summaryHeight;
-
-    private int listX;
-    private int listY;
-    private int listWidth;
-    private int listHeight;
-
-    private int detailX;
-    private int detailY;
-    private int detailWidth;
-    private int detailHeight;
 
     public GameHubScreen() {
         super(Component.translatable("screen.namanseulfarming.hub.title"));
@@ -90,24 +76,25 @@ public final class GameHubScreen extends BaseTabbedScreen {
         super.init();
         recalcLayout();
         initCommonButtons(frameX + frameWidth - 4, frameY + 8);
+
         openTabButton = addRenderableWidget(UiButton.create(
-                Component.translatable("screen.namanseulfarming.shop.open_button"),
+                Component.literal("Open"),
                 0,
                 0,
-                92,
+                108,
                 20,
                 button -> openActiveTabScreen()
         ));
+
         int tabGap = 4;
         int tabCount = 5;
         int tabAreaWidth = frameWidth - 20;
         int tabWidth = clampInt((tabAreaWidth - tabGap * (tabCount - 1)) / tabCount, 48, 78);
         initTabButtons(frameX + 10, frameY + 34, tabWidth, 20, tabGap);
-        layoutTopButtons();
-        listPanel = new UiListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
 
         updateTabContent();
-        refreshOpenShopButton();
+        layoutButtons();
+
         if (summaryData == null) {
             requestSummary(UiAction.INIT);
         }
@@ -132,15 +119,10 @@ public final class GameHubScreen extends BaseTabbedScreen {
     }
 
     @Override
-    protected void onRefreshPressed() {
-        requestSummary(UiAction.REFRESH);
-    }
-
-    @Override
     protected void onTabChanged(String tabId) {
         lastSelectedTab = tabId;
-        refreshOpenShopButton();
         updateTabContent();
+        layoutButtons();
     }
 
     public void handleServerResponse(UiResponsePayload payload) {
@@ -149,9 +131,6 @@ public final class GameHubScreen extends BaseTabbedScreen {
         }
 
         if (pendingRequestId != null && !pendingRequestId.equals(payload.requestId())) {
-            if (Config.networkDebugLog()) {
-                NamanseulFarming.LOGGER.debug("[UI] ignored stale response id={} pending={}", payload.requestId(), pendingRequestId);
-            }
             return;
         }
 
@@ -159,75 +138,39 @@ public final class GameHubScreen extends BaseTabbedScreen {
         setLoading(false);
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "Hub summary failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.hub.banner.failed")));
+            String message = payload.error() == null || payload.error().isBlank()
+                    ? "Unable to load hub overview."
+                    : payload.error();
+            setError(message);
             return;
         }
 
         if (payload.data() == null) {
-            setError("Hub summary response had no data");
+            setError("Hub overview returned no data.");
             return;
         }
 
         summaryData = payload.data();
+        summaryPartial = summaryData.partial();
         setError(null);
         updateTabContent();
-
-        if (summaryData.partial()) {
-            String note = summaryData.partialNote() == null || summaryData.partialNote().isBlank()
-                    ? "partial summary"
-                    : summaryData.partialNote();
-            setMessageBanner(new UiMessageBanner(
-                    UiMessageBanner.MessageType.WARNING,
-                    Component.literal("Some summary sections failed: " + userFacingPartialNote(note))
-            ));
-        } else {
-            setMessageBanner(new UiMessageBanner(
-                    UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.hub.banner.updated", formatTime(summaryData.refreshedAtEpochMillis()))
-            ));
-        }
     }
 
     @Override
     protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         recalcLayout();
-        layoutTopButtons();
+        layoutButtons();
 
         renderPanel(graphics, frameX, frameY, frameWidth, frameHeight);
         renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
 
+        renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
+        renderSectionTitle(graphics, Component.literal("Next Action"), actionX + 6, actionY + 6);
+        renderActiveAction(graphics);
+
         renderPanel(graphics, summaryX, summaryY, summaryWidth, summaryHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.hub.summary"), summaryX + 6, summaryY + 6);
+        renderSectionTitle(graphics, Component.literal("Quick Summary"), summaryX + 6, summaryY + 6);
         renderClipped(graphics, summaryX, summaryY, summaryWidth, summaryHeight, () -> renderSummaryLines(graphics));
-
-        renderPanel(graphics, listX, listY, listWidth, listHeight);
-        if (listPanel != null) {
-            listPanel.render(graphics, font, mouseX, mouseY);
-        }
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.hub.list"), listX + 6, listY + 6);
-
-        renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.hub.detail"), detailX + 6, detailY + 6);
-        renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () -> renderDetailLines(graphics));
-    }
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (listPanel != null && listPanel.mouseClicked(mouseX, mouseY, button)) {
-            updateDetailLines();
-            return true;
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (listPanel != null && listPanel.mouseScrolled(mouseX, mouseY, scrollY)) {
-            return true;
-        }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     private void requestSummary(UiAction action) {
@@ -260,171 +203,110 @@ public final class GameHubScreen extends BaseTabbedScreen {
 
     private void recalcLayout() {
         frameWidth = Math.min(560, width - 20);
-        frameHeight = Math.min(320, height - 24);
+        frameHeight = Math.min(300, height - 24);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 
-        summaryX = frameX + 10;
-        summaryY = frameY + 58;
-        summaryWidth = frameWidth - 20;
-        summaryHeight = 62;
+        int contentX = frameX + 10;
+        int contentWidth = frameWidth - 20;
 
-        listX = frameX + 10;
-        listY = summaryY + summaryHeight + 6;
-        int innerWidth = frameWidth - 20;
-        int preferredListWidth = clampInt(innerWidth * 34 / 100, 108, 176);
-        listWidth = Math.max(96, preferredListWidth);
-        listHeight = Math.max(60, frameY + frameHeight - 10 - listY);
+        actionX = contentX;
+        actionY = frameY + 58;
+        actionWidth = contentWidth;
+        actionHeight = 84;
 
-        detailX = listX + listWidth + 8;
-        detailY = listY;
-        detailWidth = Math.max(90, innerWidth - listWidth - 8);
-        detailHeight = listHeight;
+        summaryX = contentX;
+        summaryY = actionY + actionHeight + 8;
+        summaryWidth = contentWidth;
+        summaryHeight = Math.max(68, frameY + frameHeight - 10 - summaryY);
     }
 
-    private void layoutTopButtons() {
+    private void layoutButtons() {
         positionCommonButtons(frameX + frameWidth - 4, frameY + 8);
+
         if (openTabButton == null) {
             return;
         }
-        int openWidth = clampInt(frameWidth / 4, 64, 100);
-        int refreshX = frameX + frameWidth - ((72 * 2) + 6 + 2);
-        int openX = refreshX - 6 - openWidth;
-        if (openX < frameX + 10) {
+
+        HubTabView tabView = tabViews.get(activeTabId());
+        if (tabView == null) {
             openTabButton.visible = false;
             openTabButton.active = false;
             return;
         }
+
+        int openWidth = clampInt(actionWidth / 3, 92, 136);
+        int openX = actionX + actionWidth - openWidth - 8;
+        int openY = actionY + actionHeight - 28;
+
         openTabButton.visible = true;
-        openTabButton.setPosition(openX, frameY + 8);
+        openTabButton.active = true;
+        openTabButton.setPosition(openX, openY);
         openTabButton.setWidth(openWidth);
+        openTabButton.setHeight(20);
+        openTabButton.setMessage(tabView.openButtonLabel());
     }
 
     private void updateTabContent() {
         HubTabView tabView = tabViews.get(activeTabId());
-        if (tabView == null || listPanel == null) {
+        if (tabView == null) {
+            summaryLines = List.of();
+            setEmpty(Component.literal("No tab selected."));
             return;
         }
 
-        listPanel.setEntries(tabView.buildListEntries(summaryData));
-        if (listPanel.isEmpty()) {
-            setEmpty(Component.translatable("screen.namanseulfarming.hub.empty"));
+        if (summaryData == null) {
+            summaryLines = List.of(Component.literal("Loading hub overview..."));
+            setEmpty(null);
+            return;
+        }
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("Focus now: " + safe(summaryData.currentFocusRegion())));
+        lines.add(Component.literal("Active events to watch: " + summaryData.activeEventCount()));
+        lines.addAll(tabView.summaryLines(summaryData));
+        if (summaryPartial) {
+            lines.add(Component.literal("Some overview values are still syncing."));
+        }
+
+        summaryLines = lines;
+        if (summaryLines.isEmpty()) {
+            setEmpty(Component.literal("No overview available."));
         } else {
             setEmpty(null);
         }
-        updateDetailLines();
     }
 
-    private void refreshOpenShopButton() {
-        if (openTabButton == null) {
-            return;
-        }
-
-        if (TAB_SHOP.equals(activeTabId())) {
-            openTabButton.visible = true;
-            openTabButton.active = true;
-            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.shop.open_button"));
-            return;
-        }
-
-        if (TAB_MAIL.equals(activeTabId())) {
-            openTabButton.visible = true;
-            openTabButton.active = true;
-            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.mail.open_button"));
-            return;
-        }
-
-        if (TAB_INVEST.equals(activeTabId())) {
-            openTabButton.visible = true;
-            openTabButton.active = true;
-            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.invest.open_button"));
-            return;
-        }
-
-        if (TAB_REGION.equals(activeTabId())) {
-            openTabButton.visible = true;
-            openTabButton.active = true;
-            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.status.open_button"));
-            return;
-        }
-
-        if (TAB_PLAYER.equals(activeTabId())) {
-            openTabButton.visible = true;
-            openTabButton.active = true;
-            openTabButton.setMessage(Component.translatable("screen.namanseulfarming.player.open_button"));
-            return;
-        }
-
-        openTabButton.visible = false;
-        openTabButton.active = false;
-    }
-
-    private void updateDetailLines() {
+    private void renderActiveAction(GuiGraphics graphics) {
         HubTabView tabView = tabViews.get(activeTabId());
-        if (tabView == null || listPanel == null) {
-            detailLines = List.of();
+        if (tabView == null) {
+            graphics.drawString(font, Component.literal("Select a tab."), actionX + 8, actionY + 26, 0xDDE6F9, false);
             return;
         }
-        detailLines = tabView.buildDetailLines(summaryData, listPanel.selectedIndex());
+
+        int textX = actionX + 8;
+        int textY = actionY + 24;
+
+        graphics.drawString(font, Component.literal("Selected: " + tabView.tabLabel().getString()), textX, textY, 0xFFFFFF, false);
+        graphics.drawString(font, tabView.actionTitle(), textX, textY + 14, 0xEAF1FF, false);
+        graphics.drawString(font, tabView.actionHint(), textX, textY + 28, 0xBFD0E8, false);
     }
 
     private void renderSummaryLines(GuiGraphics graphics) {
-        if (summaryData == null) {
-            graphics.drawString(font, Component.translatable("screen.namanseulfarming.hub.summary_waiting"),
-                    summaryX + 8, summaryY + 24, 0xDDE6F9, false);
-            return;
-        }
-
-        int lineX = summaryX + 8;
-        int lineY = summaryY + 20;
-        int color = 0xDDE6F9;
-        int contentWidth = summaryWidth - 16;
-        if (contentWidth >= 320) {
-            int columnTwoX = lineX + contentWidth / 2;
-            graphics.drawString(font, Component.literal("Focus: " + summaryData.currentFocusRegion()), lineX, lineY, color, false);
-            graphics.drawString(font, Component.literal("Active Events: " + summaryData.activeEventCount()), columnTwoX, lineY, color, false);
-            graphics.drawString(font, Component.literal("Project Effects: " + summaryData.activeProjectEffectCount()), lineX, lineY + 12, color, false);
-            graphics.drawString(font, Component.literal("Dominant Region: " + summaryData.dominantRegionCategory()), columnTwoX, lineY + 12, color, false);
-            graphics.drawString(font, Component.literal("Generated: " + formatTime(summaryData.generatedAtEpochMillis())), lineX, lineY + 24, color, false);
-            graphics.drawString(font, Component.literal("Refreshed: " + formatTime(summaryData.refreshedAtEpochMillis())), columnTwoX, lineY + 24, color, false);
-            return;
-        }
-
-        graphics.drawString(font, Component.literal("Focus: " + summaryData.currentFocusRegion()), lineX, lineY, color, false);
-        graphics.drawString(font, Component.literal("Active Events: " + summaryData.activeEventCount()), lineX, lineY + 12, color, false);
-        graphics.drawString(font, Component.literal("Project Effects: " + summaryData.activeProjectEffectCount()), lineX, lineY + 24, color, false);
-        graphics.drawString(font, Component.literal("Dominant Region: " + summaryData.dominantRegionCategory()), lineX, lineY + 36, color, false);
-        int rightX = lineX + Math.max(120, contentWidth / 2);
-        graphics.drawString(font, Component.literal("Generated: " + formatTime(summaryData.generatedAtEpochMillis())), rightX, lineY + 24, color, false);
-        graphics.drawString(font, Component.literal("Refreshed: " + formatTime(summaryData.refreshedAtEpochMillis())), rightX, lineY + 36, color, false);
-    }
-
-    private void renderDetailLines(GuiGraphics graphics) {
-        int lineY = detailY + 22;
-        for (Component line : detailLines) {
-            graphics.drawString(font, line, detailX + 8, lineY, 0xEAF1FF, false);
+        int lineY = summaryY + 22;
+        for (Component line : summaryLines) {
+            graphics.drawString(font, line, summaryX + 8, lineY, 0xEAF1FF, false);
             lineY += 12;
-            if (lineY > detailY + detailHeight - 10) {
+            if (lineY > summaryY + summaryHeight - 10) {
                 break;
             }
         }
     }
 
-    private static String formatTime(long epochMillis) {
-        if (epochMillis <= 0) {
+    private static String safe(String value) {
+        if (value == null || value.isBlank()) {
             return "-";
         }
-        return TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
-    }
-
-    private static String userFacingPartialNote(String rawNote) {
-        if (rawNote == null || rawNote.isBlank()) {
-            return "partial summary";
-        }
-        return switch (rawNote) {
-            case "ops summary connect failed" -> "ops summary connect failed (backend not reachable)";
-            case "ops summary timeout" -> "ops summary timeout (backend too slow)";
-            default -> rawNote;
-        };
+        return value;
     }
 }

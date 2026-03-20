@@ -1,32 +1,119 @@
 package com.namanseul.farmingmod.client.ui.status;
 
-import com.google.gson.JsonObject;
 import java.util.List;
 
 public record StatusOverviewData(
-        JsonObject focus,
-        List<JsonObject> regions,
-        List<JsonObject> activeEvents,
-        List<JsonObject> projectEffects,
-        List<JsonObject> completedProjects,
-        boolean partial,
-        List<String> partialNotes,
-        String generatedAt
+        FocusSnapshot focus,
+        List<RegionSnapshot> regions,
+        List<EventSnapshot> activeEvents,
+        List<EffectSnapshot> projectEffects,
+        List<CompletionSnapshot> completedProjects,
+        boolean partial
 ) {
+    public StatusOverviewData {
+        focus = focus == null ? FocusSnapshot.empty() : focus;
+        regions = regions == null ? List.of() : List.copyOf(regions);
+        activeEvents = activeEvents == null ? List.of() : List.copyOf(activeEvents);
+        projectEffects = projectEffects == null ? List.of() : List.copyOf(projectEffects);
+        completedProjects = completedProjects == null ? List.of() : List.copyOf(completedProjects);
+    }
+
+    public static StatusOverviewData empty() {
+        return new StatusOverviewData(
+                FocusSnapshot.empty(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                false
+        );
+    }
+
     public int regionCount() {
-        return regions == null ? 0 : regions.size();
+        return regions.size();
     }
 
     public int activeEventCount() {
-        return activeEvents == null ? 0 : activeEvents.size();
+        return activeEvents.size();
     }
 
     public int activeProjectEffectCount() {
-        return projectEffects == null ? 0 : projectEffects.size();
+        return projectEffects.size();
     }
 
     public int completedProjectCount() {
-        return completedProjects == null ? 0 : completedProjects.size();
+        return completedProjects.size();
+    }
+
+    public record FocusSnapshot(
+            String region,
+            String status,
+            String sourceCategory,
+            boolean available
+    ) {
+        public FocusSnapshot {
+            region = region == null || region.isBlank() ? "-" : region;
+            status = status == null ? "" : status;
+            sourceCategory = sourceCategory == null ? "" : sourceCategory;
+        }
+
+        public static FocusSnapshot empty() {
+            return new FocusSnapshot("-", "", "", false);
+        }
+    }
+
+    public record RegionSnapshot(
+            String region,
+            int level,
+            int progressPercent,
+            int currentSellTotal,
+            String dominantCategory
+    ) {
+        public RegionSnapshot {
+            region = region == null || region.isBlank() ? "-" : region;
+            dominantCategory = dominantCategory == null ? "" : dominantCategory;
+            progressPercent = Math.max(0, Math.min(100, progressPercent));
+        }
+    }
+
+    public record EventSnapshot(
+            String title,
+            String region,
+            String effectLabel,
+            String state,
+            boolean runtimeActive
+    ) {
+        public EventSnapshot {
+            title = title == null || title.isBlank() ? "Event" : title;
+            region = region == null || region.isBlank() ? "-" : region;
+            effectLabel = effectLabel == null ? "" : effectLabel;
+            state = state == null ? "" : state;
+        }
+    }
+
+    public record EffectSnapshot(
+            String projectId,
+            String target,
+            String effectType,
+            double effectValue,
+            boolean active
+    ) {
+        public EffectSnapshot {
+            projectId = projectId == null || projectId.isBlank() ? "-" : projectId;
+            target = target == null ? "" : target;
+            effectType = effectType == null ? "" : effectType;
+        }
+    }
+
+    public record CompletionSnapshot(
+            String projectId,
+            boolean completed,
+            boolean effectActive,
+            int rewardMailCount,
+            int rewardTotalAmount
+    ) {
+        public CompletionSnapshot {
+            projectId = projectId == null || projectId.isBlank() ? "-" : projectId;
+        }
     }
 }
-

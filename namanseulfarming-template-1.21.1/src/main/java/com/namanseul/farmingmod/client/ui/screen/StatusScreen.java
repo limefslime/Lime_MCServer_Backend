@@ -4,7 +4,7 @@ import com.namanseul.farmingmod.client.network.UiClientNetworking;
 import com.namanseul.farmingmod.client.ui.status.StatusJsonParser;
 import com.namanseul.farmingmod.client.ui.status.StatusOverviewData;
 import com.namanseul.farmingmod.client.ui.status.StatusViewFormatter;
-import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
+import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import java.util.List;
@@ -20,7 +20,7 @@ public final class StatusScreen extends BaseTabbedScreen {
     private final Screen returnScreen;
 
     private StatusOverviewData overviewData;
-    private com.namanseul.farmingmod.client.ui.widget.UiListPanel listPanel;
+    private UiListPanel listPanel;
     private List<Component> detailLines = List.of();
     private String pendingRequestId;
     private boolean listLoading;
@@ -69,6 +69,7 @@ public final class StatusScreen extends BaseTabbedScreen {
         super.init();
         recalcLayout();
         initCommonButtons(frameX + frameWidth - 4, frameY + 8);
+        initRefreshButton(frameX + frameWidth - 4, frameY + 8);
         if (closeButton != null) {
             closeButton.setMessage(Component.translatable("screen.namanseulfarming.status.back"));
         }
@@ -78,12 +79,8 @@ public final class StatusScreen extends BaseTabbedScreen {
         int tabAreaWidth = frameWidth - 20;
         int tabWidth = clampInt((tabAreaWidth - tabGap * (tabCount - 1)) / tabCount, 52, 90);
         initTabButtons(frameX + 10, frameY + 34, tabWidth, 20, tabGap);
-        listPanel = new com.namanseul.farmingmod.client.ui.widget.UiListPanel(
-                listX + 4,
-                listY + 18,
-                listWidth - 8,
-                listHeight - 22
-        );
+
+        listPanel = new UiListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
         updateTabContent();
         requestOverview(false);
     }
@@ -122,11 +119,9 @@ public final class StatusScreen extends BaseTabbedScreen {
         setLoading(false);
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "status request failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(
-                    UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.status.banner.failed")
-            ));
+            setError(payload.error() == null || payload.error().isBlank()
+                    ? "Unable to load status overview."
+                    : payload.error());
             updateActionButtons();
             return;
         }
@@ -135,27 +130,8 @@ public final class StatusScreen extends BaseTabbedScreen {
             overviewData = StatusJsonParser.parseOverview(payload.dataJson());
             setError(null);
             updateTabContent();
-
-            if (overviewData.partial()) {
-                String note = overviewData.partialNotes().isEmpty()
-                        ? "partial response"
-                        : overviewData.partialNotes().get(0);
-                setMessageBanner(new UiMessageBanner(
-                        UiMessageBanner.MessageType.WARNING,
-                        Component.literal("Some sections failed: " + note)
-                ));
-            } else {
-                setMessageBanner(new UiMessageBanner(
-                        UiMessageBanner.MessageType.INFO,
-                        Component.translatable("screen.namanseulfarming.status.banner.loaded")
-                ));
-            }
         } catch (Exception ex) {
-            setError("failed to parse status response");
-            setMessageBanner(new UiMessageBanner(
-                    UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.status.banner.failed")
-            ));
+            setError("Unable to read status overview data.");
         }
 
         updateActionButtons();
@@ -240,44 +216,16 @@ public final class StatusScreen extends BaseTabbedScreen {
     }
 
     private void renderSummaryLines(GuiGraphics graphics) {
-        if (overviewData == null) {
-            graphics.drawString(font, Component.translatable("screen.namanseulfarming.status.summary_waiting"),
-                    summaryX + 8, summaryY + 24, 0xDDE6F9, false);
-            return;
-        }
-
-        int x = summaryX + 8;
-        int y = summaryY + 20;
-        int color = 0xDDE6F9;
-        int contentWidth = summaryWidth - 16;
-
-        String focusRegion = "-";
-        if (overviewData.focus() != null && overviewData.focus().has("focusRegion")) {
-            try {
-                focusRegion = overviewData.focus().get("focusRegion").getAsString();
-            } catch (Exception ignored) {
-                // keep fallback
+        List<Component> summaryLines = StatusViewFormatter.buildSummaryLines(overviewData);
+        int lineY = summaryY + 20;
+        int maxY = summaryY + summaryHeight - 10;
+        for (Component line : summaryLines) {
+            if (lineY > maxY) {
+                break;
             }
+            graphics.drawString(font, line, summaryX + 8, lineY, 0xDDE6F9, false);
+            lineY += 12;
         }
-
-        if (contentWidth >= 320) {
-            int rightX = x + contentWidth / 2;
-            graphics.drawString(font, Component.literal("Focus: " + focusRegion), x, y, color, false);
-            graphics.drawString(font, Component.literal("Regions: " + overviewData.regionCount()), rightX, y, color, false);
-            graphics.drawString(font, Component.literal("Active Events: " + overviewData.activeEventCount()), x, y + 12, color, false);
-            graphics.drawString(font, Component.literal("Project Effects: " + overviewData.activeProjectEffectCount()), rightX, y + 12, color, false);
-            graphics.drawString(font, Component.literal("Completed Projects: " + overviewData.completedProjectCount()), x, y + 24, color, false);
-            graphics.drawString(font, Component.literal("Partial: " + overviewData.partial()), rightX, y + 24, color, false);
-            return;
-        }
-
-        graphics.drawString(font, Component.literal("Focus: " + focusRegion), x, y, color, false);
-        graphics.drawString(font, Component.literal("Regions: " + overviewData.regionCount()), x, y + 12, color, false);
-        graphics.drawString(font, Component.literal("Active Events: " + overviewData.activeEventCount()), x, y + 24, color, false);
-        graphics.drawString(font, Component.literal("Project Effects: " + overviewData.activeProjectEffectCount()), x, y + 36, color, false);
-        int rightX = x + Math.max(120, contentWidth / 2);
-        graphics.drawString(font, Component.literal("Completed Projects: " + overviewData.completedProjectCount()), rightX, y + 24, color, false);
-        graphics.drawString(font, Component.literal("Partial: " + overviewData.partial()), rightX, y + 36, color, false);
     }
 
     private void renderDetailLines(GuiGraphics graphics) {

@@ -1,8 +1,5 @@
 package com.namanseul.farmingmod.client.ui.player;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -10,7 +7,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.Nullable;
 
 public final class PlayerOverviewFormatter {
     public static final String TAB_WALLET = "wallet";
@@ -24,12 +20,12 @@ public final class PlayerOverviewFormatter {
 
     public static List<Component> buildListEntries(
             String tabId,
-            @Nullable JsonObject wallet,
-            @Nullable JsonObject activity,
-            @Nullable JsonObject summary
+            PlayerOverviewData.WalletSnapshot wallet,
+            PlayerOverviewData.ActivitySnapshot activity,
+            PlayerOverviewData.SummarySnapshot summary
     ) {
         return switch (tabId) {
-            case TAB_WALLET -> buildWalletEntries(wallet);
+            case TAB_WALLET -> buildWalletEntries(wallet, summary);
             case TAB_ACTIVITY -> buildActivityEntries(activity);
             case TAB_SUMMARY -> buildSummaryEntries(summary);
             default -> List.of();
@@ -38,201 +34,176 @@ public final class PlayerOverviewFormatter {
 
     public static List<Component> buildDetailLines(
             String tabId,
-            @Nullable JsonObject wallet,
-            @Nullable JsonObject activity,
-            @Nullable JsonObject summary,
+            PlayerOverviewData.WalletSnapshot wallet,
+            PlayerOverviewData.ActivitySnapshot activity,
+            PlayerOverviewData.SummarySnapshot summary,
             int selectedIndex
     ) {
         return switch (tabId) {
-            case TAB_WALLET -> buildWalletDetail(wallet);
+            case TAB_WALLET -> buildWalletDetail(wallet, summary);
             case TAB_ACTIVITY -> buildActivityDetail(activity, selectedIndex);
             case TAB_SUMMARY -> buildSummaryDetail(summary, selectedIndex);
             default -> List.of();
         };
     }
 
-    private static List<Component> buildWalletEntries(@Nullable JsonObject wallet) {
-        if (wallet == null || wallet.entrySet().isEmpty()) {
-            return List.of(Component.literal("wallet data is not loaded yet"));
+    public static List<Component> buildOverviewHighlights(
+            PlayerOverviewData.WalletSnapshot wallet,
+            PlayerOverviewData.ActivitySnapshot activity,
+            PlayerOverviewData.SummarySnapshot summary,
+            boolean partial
+    ) {
+        if (!wallet.available() && !activity.available() && !summary.available()) {
+            return List.of(Component.literal("Waiting for player overview..."));
         }
 
+        int balance = summary.available() ? summary.balance() : wallet.balance();
+        int recentCount = summary.available() ? summary.recentActivityCount() : activity.totalCount();
+        String focus = summary.available() ? summary.focusRegion() : "-";
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("Balance: " + formatNumber(balance)));
+        lines.add(Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()));
+        lines.add(Component.literal("Recent actions: " + recentCount));
+        lines.add(Component.literal("Current focus: " + focus));
+        if (partial) {
+            lines.add(Component.literal("Some values are temporarily unavailable."));
+        }
+        return lines;
+    }
+
+    private static List<Component> buildWalletEntries(
+            PlayerOverviewData.WalletSnapshot wallet,
+            PlayerOverviewData.SummarySnapshot summary
+    ) {
+        if (!wallet.available() && !summary.available()) {
+            return List.of(Component.literal("Balance information is loading..."));
+        }
+
+        int balance = summary.available() ? summary.balance() : wallet.balance();
         List<Component> entries = new ArrayList<>();
-        entries.add(Component.literal("Balance: " + formatNumber(readInt(wallet, "balance", 0))));
-        entries.add(Component.literal("Player: " + readString(wallet, "playerId", "-")));
+        entries.add(Component.literal("Available coins: " + formatNumber(balance)));
+        if (summary.unclaimedRewardCount() > 0) {
+            entries.add(Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()));
+        }
+        if (summary.activeProjectCount() > 0) {
+            entries.add(Component.literal("Active projects: " + summary.activeProjectCount()));
+        }
         return entries;
     }
 
-    private static List<Component> buildWalletDetail(@Nullable JsonObject wallet) {
-        if (wallet == null || wallet.entrySet().isEmpty()) {
-            return List.of(Component.literal("wallet detail is not available"));
+    private static List<Component> buildWalletDetail(
+            PlayerOverviewData.WalletSnapshot wallet,
+            PlayerOverviewData.SummarySnapshot summary
+    ) {
+        if (!wallet.available() && !summary.available()) {
+            return List.of(Component.literal("No wallet details yet."));
         }
 
+        int balance = summary.available() ? summary.balance() : wallet.balance();
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("playerId: " + readString(wallet, "playerId", "-")));
-        lines.add(Component.literal("balance: " + formatNumber(readInt(wallet, "balance", 0))));
+        lines.add(Component.literal("Spendable balance: " + formatNumber(balance)));
+        lines.add(Component.literal("Use this balance in Shop and Investment tabs."));
+        if (summary.unclaimedRewardCount() > 0) {
+            lines.add(Component.literal("Claim " + summary.unclaimedRewardCount() + " reward mails for extra funds."));
+        }
+        if (summary.shopNetDelta() != 0) {
+            lines.add(Component.literal("Recent shop net: " + signedNumber(summary.shopNetDelta())));
+        }
         return lines;
     }
 
-    private static List<Component> buildActivityEntries(@Nullable JsonObject activity) {
-        JsonArray items = readArray(activity, "items");
-        if (items.isEmpty()) {
-            return List.of(Component.literal("no recent activity"));
+    private static List<Component> buildActivityEntries(PlayerOverviewData.ActivitySnapshot activity) {
+        if (!activity.available() || activity.items().isEmpty()) {
+            return List.of(Component.literal("No recent activity."));
         }
 
         List<Component> entries = new ArrayList<>();
-        for (JsonElement itemElement : items) {
-            if (itemElement == null || !itemElement.isJsonObject()) {
-                continue;
-            }
-            JsonObject item = itemElement.getAsJsonObject();
-            String title = readString(item, "title", readString(item, "category", "activity"));
-            int delta = readInt(item, "amountDelta", 0);
-            long occurredAt = readLong(item, "occurredAtEpochMillis", 0L);
-            String time = occurredAt > 0 ? TIME_FORMATTER.format(Instant.ofEpochMilli(occurredAt)) : "--:--:--";
-            entries.add(Component.literal(time + " | " + title + " | " + signedNumber(delta)));
+        for (PlayerOverviewData.ActivityItem item : activity.items()) {
+            entries.add(Component.literal(
+                    formatTime(item.occurredAtEpochMillis())
+                            + " | "
+                            + item.title()
+                            + " | "
+                            + signedNumber(item.amountDelta())
+            ));
         }
-        return entries.isEmpty() ? List.of(Component.literal("no recent activity")) : entries;
-    }
-
-    private static List<Component> buildActivityDetail(@Nullable JsonObject activity, int selectedIndex) {
-        JsonArray items = readArray(activity, "items");
-        if (items.isEmpty()) {
-            return List.of(Component.literal("recent activity detail is unavailable"));
-        }
-
-        int index = Math.max(0, Math.min(selectedIndex, items.size() - 1));
-        JsonObject item = items.get(index).getAsJsonObject();
-
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("category: " + readString(item, "category", "-")));
-        lines.add(Component.literal("action: " + readString(item, "action", "-")));
-        lines.add(Component.literal("title: " + readString(item, "title", "-")));
-        lines.add(Component.literal("amountDelta: " + signedNumber(readInt(item, "amountDelta", 0))));
-        lines.add(Component.literal("balanceAfter: " + readInt(item, "balanceAfter", 0)));
-        lines.add(Component.literal("description: " + readString(item, "description", "-")));
-        lines.add(Component.literal("source: " + readString(item, "source", "-")));
-        lines.add(Component.literal("itemId: " + readString(item, "itemId", "-")));
-        lines.add(Component.literal("projectId: " + readString(item, "projectId", "-")));
-        lines.add(Component.literal("mailId: " + readString(item, "mailId", "-")));
-        return lines;
-    }
-
-    private static List<Component> buildSummaryEntries(@Nullable JsonObject summary) {
-        if (summary == null || summary.entrySet().isEmpty()) {
-            return List.of(Component.literal("summary data is not loaded yet"));
-        }
-
-        JsonObject mail = readObject(summary, "mail");
-        JsonObject activity = readObject(summary, "activity");
-        JsonObject status = readObject(summary, "status");
-
-        List<Component> entries = new ArrayList<>();
-        entries.add(Component.literal("Balance: " + formatNumber(readInt(summary, "balance", 0))));
-        entries.add(Component.literal("Unclaimed Mail: " + readInt(mail, "unclaimedRewardCount", 0)));
-        entries.add(Component.literal("Recent Activity: " + readInt(activity, "recentCount", 0)));
-        entries.add(Component.literal("Current Focus: " + readString(status, "currentFocusRegion", "-")));
         return entries;
     }
 
-    private static List<Component> buildSummaryDetail(@Nullable JsonObject summary, int selectedIndex) {
-        if (summary == null || summary.entrySet().isEmpty()) {
-            return List.of(Component.literal("summary detail is unavailable"));
+    private static List<Component> buildActivityDetail(PlayerOverviewData.ActivitySnapshot activity, int selectedIndex) {
+        if (!activity.available() || activity.items().isEmpty()) {
+            return List.of(Component.literal("Activity detail will appear here."));
         }
 
-        JsonObject mail = readObject(summary, "mail");
-        JsonObject activity = readObject(summary, "activity");
-        JsonObject invest = readObject(summary, "invest");
-        JsonObject status = readObject(summary, "status");
+        int index = clampIndex(selectedIndex, activity.items().size());
+        PlayerOverviewData.ActivityItem selected = activity.items().get(index);
 
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("playerId: " + readString(summary, "playerId", "-")));
-        lines.add(Component.literal("balance: " + formatNumber(readInt(summary, "balance", 0))));
-        lines.add(Component.literal("mail.totalCount: " + readInt(mail, "totalCount", 0)));
-        lines.add(Component.literal("mail.unclaimedRewardCount: " + readInt(mail, "unclaimedRewardCount", 0)));
-        lines.add(Component.literal("mail.claimedRewardCount: " + readInt(mail, "claimedRewardCount", 0)));
-        lines.add(Component.literal("mail.claimedRewardAmount: " + readInt(mail, "claimedRewardAmount", 0)));
-        lines.add(Component.literal("activity.recentCount: " + readInt(activity, "recentCount", 0)));
-        lines.add(Component.literal("activity.shopDelta: " + signedNumber(readInt(activity, "shopDelta", 0))));
-        lines.add(Component.literal("activity.investSpendTotal: " + readInt(activity, "investSpendTotal", 0)));
-        lines.add(Component.literal("activity.mailRewardTotal: " + readInt(activity, "mailRewardTotal", 0)));
-        lines.add(Component.literal("invest.activeProjectCount: " + readInt(invest, "activeProjectCount", 0)));
-        lines.add(Component.literal("status.currentFocusRegion: " + readString(status, "currentFocusRegion", "-")));
-        lines.add(Component.literal("status.activeEventCount: " + readInt(status, "activeEventCount", 0)));
-        lines.add(Component.literal("status.activeProjectEffectCount: " + readInt(status, "activeProjectEffectCount", 0)));
-        lines.add(Component.literal("status.dominantRegionCategory: " + readString(status, "dominantRegionCategory", "-")));
+        lines.add(Component.literal(selected.title()));
+        lines.add(Component.literal("Coin change: " + signedNumber(selected.amountDelta())));
+        if (selected.hasBalanceAfter()) {
+            lines.add(Component.literal("Balance after action: " + formatNumber(selected.balanceAfter())));
+        }
+        lines.add(Component.literal("Recorded at: " + formatTime(selected.occurredAtEpochMillis())));
+        if (!selected.description().isBlank()) {
+            lines.add(Component.literal(selected.description()));
+        }
         return lines;
     }
 
-    private static JsonArray readArray(@Nullable JsonObject root, String key) {
-        if (root == null) {
-            return new JsonArray();
+    private static List<Component> buildSummaryEntries(PlayerOverviewData.SummarySnapshot summary) {
+        if (!summary.available()) {
+            return List.of(Component.literal("Summary information is loading..."));
         }
-        JsonElement element = root.get(key);
-        if (element == null || !element.isJsonArray()) {
-            return new JsonArray();
-        }
-        return element.getAsJsonArray();
+
+        return List.of(
+                Component.literal("Current focus: " + summary.focusRegion()),
+                Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()),
+                Component.literal("Recent actions: " + summary.recentActivityCount()),
+                Component.literal("Active events: " + summary.activeEventCount())
+        );
     }
 
-    private static JsonObject readObject(@Nullable JsonObject root, String key) {
-        if (root == null) {
-            return null;
+    private static List<Component> buildSummaryDetail(PlayerOverviewData.SummarySnapshot summary, int selectedIndex) {
+        if (!summary.available()) {
+            return List.of(Component.literal("Summary detail is not available yet."));
         }
-        JsonElement element = root.get(key);
-        if (element == null || !element.isJsonObject()) {
-            return null;
-        }
-        return element.getAsJsonObject();
+
+        return switch (clampIndex(selectedIndex, 4)) {
+            case 0 -> List.of(
+                    Component.literal("Current focus region: " + summary.focusRegion()),
+                    Component.literal("Dominant category: " + safeText(summary.dominantRegionCategory(), "-"))
+            );
+            case 1 -> List.of(
+                    Component.literal("Unclaimed rewards: " + summary.unclaimedRewardCount()),
+                    Component.literal("Total reward coins gained: " + formatNumber(summary.mailRewardTotal()))
+            );
+            case 2 -> List.of(
+                    Component.literal("Recent actions tracked: " + summary.recentActivityCount()),
+                    Component.literal("Shop net change: " + signedNumber(summary.shopNetDelta())),
+                    Component.literal("Investment spend total: " + formatNumber(summary.investSpendTotal()))
+            );
+            default -> List.of(
+                    Component.literal("Active events: " + summary.activeEventCount()),
+                    Component.literal("Active project effects: " + summary.activeProjectEffectCount()),
+                    Component.literal("Active projects: " + summary.activeProjectCount())
+            );
+        };
     }
 
-    private static String readString(@Nullable JsonObject root, String key, String fallback) {
-        if (root == null) {
-            return fallback;
+    private static int clampIndex(int index, int size) {
+        if (size <= 0) {
+            return 0;
         }
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            String value = element.getAsString();
-            return value == null || value.isBlank() ? fallback : value;
-        } catch (Exception ignored) {
-            return fallback;
-        }
+        return Math.max(0, Math.min(index, size - 1));
     }
 
-    private static int readInt(@Nullable JsonObject root, String key, int fallback) {
-        if (root == null) {
-            return fallback;
+    private static String formatTime(long epochMillis) {
+        if (epochMillis <= 0) {
+            return "--:--:--";
         }
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return element.getAsInt();
-        } catch (Exception ignored) {
-            try {
-                return Math.round(element.getAsFloat());
-            } catch (Exception ignoredAgain) {
-                return fallback;
-            }
-        }
-    }
-
-    private static long readLong(@Nullable JsonObject root, String key, long fallback) {
-        if (root == null) {
-            return fallback;
-        }
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return element.getAsLong();
-        } catch (Exception ignored) {
-            return fallback;
-        }
+        return TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
     }
 
     private static String signedNumber(int value) {
@@ -248,5 +219,8 @@ public final class PlayerOverviewFormatter {
     private static String formatNumber(int value) {
         return NumberFormat.getIntegerInstance().format(value);
     }
-}
 
+    private static String safeText(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+}

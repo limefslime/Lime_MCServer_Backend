@@ -1,18 +1,12 @@
 package com.namanseul.farmingmod.client.ui.screen;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.namanseul.farmingmod.client.network.UiClientNetworking;
 import com.namanseul.farmingmod.client.ui.player.PlayerOverviewData;
 import com.namanseul.farmingmod.client.ui.player.PlayerOverviewFormatter;
 import com.namanseul.farmingmod.client.ui.player.PlayerOverviewParser;
 import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
-import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +17,6 @@ import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 public final class PlayerOverviewScreen extends BaseTabbedScreen {
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
-            .withZone(ZoneId.systemDefault());
     private static String lastSelectedTab = PlayerOverviewFormatter.TAB_WALLET;
 
     private final Screen returnScreen;
@@ -33,13 +25,14 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
     private UiListPanel listPanel;
     private List<Component> detailLines = List.of();
 
-    private JsonObject walletData = new JsonObject();
-    private JsonObject activityData = new JsonObject();
-    private JsonObject summaryData = new JsonObject();
+    private PlayerOverviewData.WalletSnapshot walletData = PlayerOverviewData.WalletSnapshot.empty();
+    private PlayerOverviewData.ActivitySnapshot activityData = PlayerOverviewData.ActivitySnapshot.empty();
+    private PlayerOverviewData.SummarySnapshot summaryData = PlayerOverviewData.SummarySnapshot.empty();
 
     private boolean walletLoaded;
     private boolean activityLoaded;
     private boolean summaryLoaded;
+    private boolean partialOverview;
     private boolean loading;
 
     private int frameX;
@@ -86,14 +79,17 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
         super.init();
         recalcLayout();
         initCommonButtons(frameX + frameWidth - 4, frameY + 8);
+        initRefreshButton(frameX + frameWidth - 4, frameY + 8);
         if (closeButton != null) {
             closeButton.setMessage(Component.translatable("screen.namanseulfarming.player.back"));
         }
+
         int tabGap = 4;
         int tabCount = 3;
         int tabAreaWidth = frameWidth - 20;
         int tabWidth = clampInt((tabAreaWidth - tabGap * (tabCount - 1)) / tabCount, 56, 108);
         initTabButtons(frameX + 10, frameY + 34, tabWidth, 20, tabGap);
+
         listPanel = new UiListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
         updateTabContent();
         requestOverview(false);
@@ -143,9 +139,9 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
         }
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "player overview request failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.player.banner.failed")));
+            setError(payload.error() == null || payload.error().isBlank()
+                    ? "Unable to load player overview."
+                    : payload.error());
             updateActionButtons();
             return;
         }
@@ -172,12 +168,8 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
 
             setError(null);
             updateTabContent();
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.player.banner.loaded")));
         } catch (Exception ex) {
-            setError("failed to parse player overview response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.player.banner.failed")));
+            setError("Unable to read player overview data.");
         }
         updateActionButtons();
     }
@@ -233,6 +225,7 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
         loading = true;
         setLoading(true, Component.translatable("screen.namanseulfarming.player.loading"));
         setError(null);
+
         String requestId = forceRefresh
                 ? UiClientNetworking.requestPlayerRefresh()
                 : UiClientNetworking.requestPlayerOverview(false);
@@ -272,21 +265,18 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
         walletData = overview.wallet();
         activityData = overview.activity();
         summaryData = overview.summary();
+        partialOverview = overview.partial();
+
         walletLoaded = true;
         activityLoaded = true;
         summaryLoaded = true;
-
-        if (overview.partial()) {
-            String note = overview.partialNotes().isEmpty() ? "partial response" : overview.partialNotes().get(0);
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal("Some sections failed: " + note)));
-        }
     }
 
     private void updateTabContent() {
         if (listPanel == null) {
             return;
         }
+
         List<Component> entries = PlayerOverviewFormatter.buildListEntries(
                 activeTabId(),
                 walletData,
@@ -314,40 +304,22 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
     }
 
     private void renderSummaryLines(GuiGraphics graphics) {
-        int x = summaryX + 8;
-        int y = summaryY + 20;
-        int color = 0xDDE6F9;
-        int contentWidth = summaryWidth - 16;
+        List<Component> summaryLines = PlayerOverviewFormatter.buildOverviewHighlights(
+                walletData,
+                activityData,
+                summaryData,
+                partialOverview
+        );
 
-        int balance = readInt(walletData, "balance", readInt(summaryData, "balance", 0));
-        JsonObject mail = readObject(summaryData, "mail");
-        JsonObject activity = readObject(summaryData, "activity");
-        JsonObject status = readObject(summaryData, "status");
-        long generatedAt = readLong(summaryData, "generatedAtEpochMillis",
-                readLong(activityData, "generatedAtEpochMillis", 0L));
-
-        if (contentWidth >= 320) {
-            int rightX = x + contentWidth / 2;
-            graphics.drawString(font, Component.literal("Balance: " + balance), x, y, color, false);
-            graphics.drawString(font, Component.literal("Unclaimed Mail: " + readInt(mail, "unclaimedRewardCount", 0)),
-                    rightX, y, color, false);
-            graphics.drawString(font, Component.literal("Recent Activity: " + readInt(activity, "recentCount",
-                    readInt(activityData, "count", 0))), x, y + 12, color, false);
-            graphics.drawString(font, Component.literal("Focus: " + readString(status, "currentFocusRegion", "-")),
-                    rightX, y + 12, color, false);
-            graphics.drawString(font, Component.literal("Updated: " + formatTime(generatedAt)), x, y + 24, color, false);
-            return;
+        int lineY = summaryY + 20;
+        int maxY = summaryY + summaryHeight - 10;
+        for (Component line : summaryLines) {
+            if (lineY > maxY) {
+                break;
+            }
+            graphics.drawString(font, line, summaryX + 8, lineY, 0xDDE6F9, false);
+            lineY += 12;
         }
-
-        graphics.drawString(font, Component.literal("Balance: " + balance), x, y, color, false);
-        graphics.drawString(font, Component.literal("Unclaimed Mail: " + readInt(mail, "unclaimedRewardCount", 0)),
-                x, y + 12, color, false);
-        graphics.drawString(font, Component.literal("Recent Activity: " + readInt(activity, "recentCount",
-                readInt(activityData, "count", 0))), x, y + 24, color, false);
-        int rightX = x + Math.max(120, contentWidth / 2);
-        graphics.drawString(font, Component.literal("Focus: " + readString(status, "currentFocusRegion", "-")),
-                rightX, y + 24, color, false);
-        graphics.drawString(font, Component.literal("Updated: " + formatTime(generatedAt)), rightX, y + 36, color, false);
     }
 
     private void renderDetailLines(GuiGraphics graphics) {
@@ -393,73 +365,5 @@ public final class PlayerOverviewScreen extends BaseTabbedScreen {
         detailY = listY;
         detailWidth = Math.max(90, innerWidth - listWidth - 8);
         detailHeight = listHeight;
-    }
-
-    private static JsonObject readObject(@Nullable JsonObject root, String key) {
-        if (root == null) {
-            return null;
-        }
-        JsonElement value = root.get(key);
-        if (value == null || !value.isJsonObject()) {
-            return null;
-        }
-        return value.getAsJsonObject();
-    }
-
-    private static int readInt(@Nullable JsonObject root, String key, int fallback) {
-        if (root == null) {
-            return fallback;
-        }
-        JsonElement value = root.get(key);
-        if (value == null || value.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return value.getAsInt();
-        } catch (Exception ignored) {
-            try {
-                return Math.round(value.getAsFloat());
-            } catch (Exception ignoredAgain) {
-                return fallback;
-            }
-        }
-    }
-
-    private static long readLong(@Nullable JsonObject root, String key, long fallback) {
-        if (root == null) {
-            return fallback;
-        }
-        JsonElement value = root.get(key);
-        if (value == null || value.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return value.getAsLong();
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static String readString(@Nullable JsonObject root, String key, String fallback) {
-        if (root == null) {
-            return fallback;
-        }
-        JsonElement value = root.get(key);
-        if (value == null || value.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            String parsed = value.getAsString();
-            return parsed == null || parsed.isBlank() ? fallback : parsed;
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static String formatTime(long epochMillis) {
-        if (epochMillis <= 0) {
-            return "-";
-        }
-        return TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
     }
 }

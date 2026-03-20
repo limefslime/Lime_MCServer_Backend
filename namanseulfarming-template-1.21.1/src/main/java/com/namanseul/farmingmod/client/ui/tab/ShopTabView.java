@@ -1,7 +1,6 @@
 package com.namanseul.farmingmod.client.ui.tab;
 
 import com.namanseul.farmingmod.network.payload.HubSummaryData;
-import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -13,25 +12,29 @@ public final class ShopTabView implements HubTabView {
     }
 
     @Override
-    public List<Component> buildListEntries(@Nullable HubSummaryData summary) {
-        List<Component> entries = new ArrayList<>();
-        entries.add(Component.literal("Shop UI ready for stage 2"));
-        entries.add(Component.literal("Use Open Shop button to enter"));
-        entries.add(Component.literal("Preview / Buy / Sell flow enabled"));
-        if (summary != null) {
-            entries.add(Component.literal("Hub price preview: " + summary.shopPricePreview()));
-        }
-        return entries;
+    public Component openButtonLabel() {
+        return Component.translatable("screen.namanseulfarming.shop.open_button");
     }
 
     @Override
-    public List<Component> buildDetailLines(@Nullable HubSummaryData summary, int selectedIndex) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("[Shop]"));
-        lines.add(Component.literal("Open Shop screen for list/detail/preview/buy/sell actions."));
-        if (summary != null) {
-            lines.add(Component.literal("Server summary price preview: " + summary.shopPricePreview()));
+    public Component actionTitle() {
+        return Component.literal("Open Market");
+    }
+
+    @Override
+    public Component actionHint() {
+        return Component.literal("Buy what you need and sell what you carry.");
+    }
+
+    @Override
+    public List<Component> summaryLines(@Nullable HubSummaryData summary) {
+        if (summary == null) {
+            return List.of(Component.literal("Loading market snapshot..."));
         }
-        return lines;
+
+        return List.of(
+                Component.literal("Best for quick trading decisions."),
+                Component.literal("Current reference price: " + summary.shopPricePreview())
+        );
     }
 }

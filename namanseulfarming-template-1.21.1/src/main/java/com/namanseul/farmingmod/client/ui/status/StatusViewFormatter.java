@@ -1,7 +1,6 @@
 package com.namanseul.farmingmod.client.ui.status;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.network.chat.Component;
@@ -17,7 +16,7 @@ public final class StatusViewFormatter {
 
     public static List<Component> buildListEntries(@Nullable StatusOverviewData data, String tabId) {
         if (data == null) {
-            return List.of(Component.literal("waiting for server response..."));
+            return List.of(Component.literal("Loading status overview..."));
         }
 
         return switch (tabId) {
@@ -31,7 +30,7 @@ public final class StatusViewFormatter {
 
     public static List<Component> buildDetailLines(@Nullable StatusOverviewData data, String tabId, int selectedIndex) {
         if (data == null) {
-            return List.of(Component.literal("no status data yet"));
+            return List.of(Component.literal("Status detail will appear after loading."));
         }
 
         return switch (tabId) {
@@ -43,165 +42,183 @@ public final class StatusViewFormatter {
         };
     }
 
+    public static List<Component> buildSummaryLines(@Nullable StatusOverviewData data) {
+        if (data == null) {
+            return List.of(Component.literal("Waiting for status data..."));
+        }
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("Current focus: " + data.focus().region()));
+        lines.add(Component.literal("Tracked regions: " + data.regionCount()));
+        lines.add(Component.literal("Live events: " + data.activeEventCount()));
+        lines.add(Component.literal("Active effects: " + data.activeProjectEffectCount()));
+        lines.add(Component.literal("Completed projects: " + data.completedProjectCount()));
+        if (data.partial()) {
+            lines.add(Component.literal("Some values are temporarily unavailable."));
+        }
+        return lines;
+    }
+
     private static List<Component> buildFocusEntries(StatusOverviewData data) {
-        JsonObject focus = data.focus();
-        String region = readString(focus, "focusRegion", "-");
-        String status = readString(focus, "status", "-");
-        return List.of(Component.literal("Focus: " + region + " (" + status + ")"));
+        if (!data.focus().available()) {
+            return List.of(Component.literal("Focus information is not ready."));
+        }
+
+        List<Component> entries = new ArrayList<>();
+        entries.add(Component.literal("Current focus: " + data.focus().region()));
+        if (!data.focus().status().isBlank()) {
+            entries.add(Component.literal("Focus state: " + data.focus().status()));
+        }
+        return entries;
     }
 
     private static List<Component> buildFocusDetail(StatusOverviewData data) {
-        JsonObject focus = data.focus();
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("focusRegion: " + readString(focus, "focusRegion", "-")));
-        lines.add(Component.literal("status: " + readString(focus, "status", "-")));
-        lines.add(Component.literal("sourceCategory: " + readString(focus, "sourceCategory", "-")));
-        lines.add(Component.literal("calculatedAt: " + readString(focus, "calculatedAt", "-")));
-        lines.add(Component.literal("resolvedFromCurrentCategories: " + readBoolean(focus, "resolvedFromCurrentCategories")));
+        if (!data.focus().available()) {
+            return List.of(Component.literal("No focus detail yet."));
+        }
 
-        JsonObject totals = readObject(focus, "recentSellTotals");
-        lines.add(Component.literal("recentSellTotals.farming: " + readNumberText(totals, "farming", "0")));
-        lines.add(Component.literal("recentSellTotals.fishing: " + readNumberText(totals, "fishing", "0")));
-        lines.add(Component.literal("recentSellTotals.mining: " + readNumberText(totals, "mining", "0")));
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("Region currently receiving the strongest activity: " + data.focus().region()));
+        if (!data.focus().status().isBlank()) {
+            lines.add(Component.literal("Current status: " + data.focus().status()));
+        }
+        if (!data.focus().sourceCategory().isBlank()) {
+            lines.add(Component.literal("Main category driving focus: " + data.focus().sourceCategory()));
+        }
         return lines;
     }
 
     private static List<Component> buildRegionEntries(StatusOverviewData data) {
-        List<JsonObject> regions = data.regions();
-        if (regions.isEmpty()) {
-            return List.of(Component.literal("no regions returned"));
+        if (data.regions().isEmpty()) {
+            return List.of(Component.literal("No regional progress data."));
         }
 
         List<Component> entries = new ArrayList<>();
-        for (JsonObject region : regions) {
-            String name = readString(region, "region", "-");
-            String level = readNumberText(region, "level", "0");
-            int percent = toPercent(readDouble(region, "progressPercent"));
-            entries.add(Component.literal(name + " | lvl " + level + " | " + percent + "%"));
+        for (StatusOverviewData.RegionSnapshot region : data.regions()) {
+            entries.add(Component.literal(region.region() + " | Lv " + region.level() + " | " + region.progressPercent() + "%"));
         }
         return entries;
     }
 
     private static List<Component> buildRegionDetail(StatusOverviewData data, int selectedIndex) {
-        List<JsonObject> regions = data.regions();
-        if (regions.isEmpty()) {
-            return List.of(Component.literal("no region detail available"));
+        if (data.regions().isEmpty()) {
+            return List.of(Component.literal("No region detail available."));
         }
 
-        JsonObject selected = regions.get(clampIndex(selectedIndex, regions.size()));
+        StatusOverviewData.RegionSnapshot selected = data.regions().get(clampIndex(selectedIndex, data.regions().size()));
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("region: " + readString(selected, "region", "-")));
-        lines.add(Component.literal("level: " + readNumberText(selected, "level", "0")));
-        lines.add(Component.literal("xp: " + readNumberText(selected, "xp", "0")));
-        lines.add(Component.literal("progressPercent: " + toPercent(readDouble(selected, "progressPercent")) + "%"));
-        lines.add(Component.literal("currentSellTotal: " + readNumberText(selected, "currentSellTotal", "0")));
-        lines.add(Component.literal("dominantCategory: " + readString(selected, "dominantCategory", "-")));
-        lines.add(Component.literal("mappedLegacyRegionKey: " + readString(selected, "mappedLegacyRegionKey", "-")));
-
-        JsonObject operations = readObject(selected, "operations");
-        lines.add(Component.literal("operations.currentFocusRegion: " + readString(operations, "currentFocusRegion", "-")));
-        lines.add(Component.literal("operations.activeEventCount: " + readNumberText(operations, "activeEventCount", "0")));
-        lines.add(Component.literal("operations.activeProjectEffectCount: "
-                + readNumberText(operations, "activeProjectEffectCount", "0")));
+        lines.add(Component.literal("Region: " + selected.region()));
+        lines.add(Component.literal("Progress: " + selected.progressPercent() + "%"));
+        lines.add(Component.literal("Level: " + selected.level()));
+        if (!selected.dominantCategory().isBlank()) {
+            lines.add(Component.literal("Dominant category: " + selected.dominantCategory()));
+        }
+        if (selected.currentSellTotal() > 0) {
+            lines.add(Component.literal("Recent sales volume: " + formatNumber(selected.currentSellTotal())));
+        }
         return lines;
     }
 
     private static List<Component> buildEventEntries(StatusOverviewData data) {
-        List<JsonObject> events = data.activeEvents();
-        if (events.isEmpty()) {
-            return List.of(Component.literal("no active events"));
+        if (data.activeEvents().isEmpty()) {
+            return List.of(Component.literal("No live events right now."));
         }
 
         List<Component> entries = new ArrayList<>();
-        for (JsonObject event : events) {
-            String id = readString(event, "id", "-");
-            String region = readString(event, "region", "-");
-            String effectType = readString(event, "effect_type", readString(event, "effectType", "-"));
-            entries.add(Component.literal(id + " | " + region + " | " + effectType));
+        for (StatusOverviewData.EventSnapshot event : data.activeEvents()) {
+            entries.add(Component.literal(event.title() + " | " + event.region()));
         }
         return entries;
     }
 
     private static List<Component> buildEventDetail(StatusOverviewData data, int selectedIndex) {
-        List<JsonObject> events = data.activeEvents();
-        if (events.isEmpty()) {
-            return List.of(Component.literal("no event detail available"));
+        if (data.activeEvents().isEmpty()) {
+            return List.of(Component.literal("No event detail available."));
         }
 
-        JsonObject selected = events.get(clampIndex(selectedIndex, events.size()));
+        StatusOverviewData.EventSnapshot selected = data.activeEvents().get(clampIndex(selectedIndex, data.activeEvents().size()));
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("id: " + readString(selected, "id", "-")));
-        lines.add(Component.literal("name: " + readString(selected, "name", "-")));
-        lines.add(Component.literal("region: " + readString(selected, "region", "-")));
-        lines.add(Component.literal("effectType: " + readString(selected, "effect_type",
-                readString(selected, "effectType", "-"))));
-        lines.add(Component.literal("effectValue: " + readNumberText(selected, "effect_value",
-                readNumberText(selected, "effectValue", "0"))));
-        lines.add(Component.literal("status: " + readString(selected, "status", "-")));
-        lines.add(Component.literal("runtimeStatus: " + readString(selected, "runtimeStatus", "-")));
-        lines.add(Component.literal("isRuntimeActive: " + readBoolean(selected, "isRuntimeActive")));
-        lines.add(Component.literal("startsAt: " + readString(selected, "startsAt", "-")));
-        lines.add(Component.literal("endsAt: " + readString(selected, "endsAt", "-")));
+        lines.add(Component.literal("Event: " + selected.title()));
+        lines.add(Component.literal("Region: " + selected.region()));
+        if (!selected.effectLabel().isBlank()) {
+            lines.add(Component.literal("Current effect: " + selected.effectLabel()));
+        }
+        if (!selected.state().isBlank()) {
+            lines.add(Component.literal("State: " + selected.state()));
+        }
+        if (!selected.runtimeActive()) {
+            lines.add(Component.literal("This event is not active at the moment."));
+        }
         return lines;
     }
 
     private static List<Component> buildCompletionEntries(StatusOverviewData data) {
-        List<JsonObject> completed = data.completedProjects();
-        if (!completed.isEmpty()) {
+        if (!data.completedProjects().isEmpty()) {
             List<Component> entries = new ArrayList<>();
-            for (JsonObject row : completed) {
-                entries.add(Component.literal(readString(row, "projectId", "-")
-                        + " | completed=" + readBoolean(row, "isCompleted")
-                        + " | rewards=" + readNumberText(row, "rewardTotalAmount", "0")));
+            for (StatusOverviewData.CompletionSnapshot row : data.completedProjects()) {
+                entries.add(Component.literal(row.projectId() + " | " + (row.completed() ? "Completed" : "In progress")));
             }
             return entries;
         }
 
-        List<JsonObject> effects = data.projectEffects();
-        if (effects.isEmpty()) {
-            return List.of(Component.literal("no completion/effect records"));
+        if (!data.projectEffects().isEmpty()) {
+            List<Component> entries = new ArrayList<>();
+            for (StatusOverviewData.EffectSnapshot effect : data.projectEffects()) {
+                entries.add(Component.literal(effect.projectId() + " | " + (effect.active() ? "Effect active" : "Effect inactive")));
+            }
+            return entries;
         }
 
-        List<Component> entries = new ArrayList<>();
-        for (JsonObject effect : effects) {
-            entries.add(Component.literal(readString(effect, "project_id", "-")
-                    + " | " + readString(effect, "effect_target", "-")
-                    + " | " + readNumberText(effect, "effect_value", "0")));
-        }
-        return entries;
+        return List.of(Component.literal("No completion or effect records."));
     }
 
     private static List<Component> buildCompletionDetail(StatusOverviewData data, int selectedIndex) {
-        List<JsonObject> completed = data.completedProjects();
-        if (!completed.isEmpty()) {
-            JsonObject row = completed.get(clampIndex(selectedIndex, completed.size()));
+        if (!data.completedProjects().isEmpty()) {
+            StatusOverviewData.CompletionSnapshot row = data.completedProjects().get(clampIndex(selectedIndex, data.completedProjects().size()));
             List<Component> lines = new ArrayList<>();
-            lines.add(Component.literal("projectId: " + readString(row, "projectId", "-")));
-            lines.add(Component.literal("isCompleted: " + readBoolean(row, "isCompleted")));
-            lines.add(Component.literal("isEffectActive: " + readBoolean(row, "isEffectActive")));
-            lines.add(Component.literal("effectTarget: " + readString(row, "effectTarget", "-")));
-            lines.add(Component.literal("effectType: " + readString(row, "effectType", "-")));
-            lines.add(Component.literal("completionProcessed: " + readBoolean(row, "completionProcessed")));
-            lines.add(Component.literal("completionMailSent: " + readBoolean(row, "completionMailSent")));
-            lines.add(Component.literal("rewardMailCount: " + readNumberText(row, "rewardMailCount", "0")));
-            lines.add(Component.literal("rewardTotalAmount: " + readNumberText(row, "rewardTotalAmount", "0")));
+            lines.add(Component.literal("Project: " + row.projectId()));
+            lines.add(Component.literal("Completion: " + (row.completed() ? "Done" : "In progress")));
+            lines.add(Component.literal("Reward mails: " + row.rewardMailCount()));
+            lines.add(Component.literal("Reward total: " + formatNumber(row.rewardTotalAmount())));
+            if (row.effectActive()) {
+                lines.add(Component.literal("Project effect is currently active."));
+            }
             return lines;
         }
 
-        List<JsonObject> effects = data.projectEffects();
-        if (effects.isEmpty()) {
-            return List.of(Component.literal("no completion/effect detail available"));
+        if (!data.projectEffects().isEmpty()) {
+            StatusOverviewData.EffectSnapshot effect = data.projectEffects().get(clampIndex(selectedIndex, data.projectEffects().size()));
+            List<Component> lines = new ArrayList<>();
+            lines.add(Component.literal("Project: " + effect.projectId()));
+            lines.add(Component.literal("Effect: " + buildEffectText(effect)));
+            lines.add(Component.literal("State: " + (effect.active() ? "Active" : "Inactive")));
+            return lines;
         }
 
-        JsonObject row = effects.get(clampIndex(selectedIndex, effects.size()));
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("id: " + readString(row, "id", "-")));
-        lines.add(Component.literal("project_id: " + readString(row, "project_id", "-")));
-        lines.add(Component.literal("effect_type: " + readString(row, "effect_type", "-")));
-        lines.add(Component.literal("effect_target: " + readString(row, "effect_target", "-")));
-        lines.add(Component.literal("effect_value: " + readNumberText(row, "effect_value", "0")));
-        lines.add(Component.literal("is_active: " + readBoolean(row, "is_active")));
-        return lines;
+        return List.of(Component.literal("No completion detail available."));
+    }
+
+    private static String buildEffectText(StatusOverviewData.EffectSnapshot effect) {
+        StringBuilder text = new StringBuilder();
+        if (!effect.target().isBlank()) {
+            text.append(effect.target()).append(" ");
+        }
+        if (!effect.effectType().isBlank()) {
+            text.append(effect.effectType()).append(" ");
+        }
+        text.append(formatEffectValue(effect.effectValue()));
+        return text.toString().trim();
+    }
+
+    private static String formatEffectValue(double value) {
+        if (Math.rint(value) == value) {
+            return Integer.toString((int) value);
+        }
+        return String.format("%.2f", value);
+    }
+
+    private static String formatNumber(int value) {
+        return NumberFormat.getIntegerInstance().format(value);
     }
 
     private static int clampIndex(int selectedIndex, int size) {
@@ -210,92 +227,4 @@ public final class StatusViewFormatter {
         }
         return Math.max(0, Math.min(selectedIndex, size - 1));
     }
-
-    private static JsonObject readObject(JsonObject root, String key) {
-        if (root == null) {
-            return null;
-        }
-        JsonElement element = root.get(key);
-        if (element == null || !element.isJsonObject()) {
-            return null;
-        }
-        return element.getAsJsonObject();
-    }
-
-    private static String readString(JsonObject root, String key, String fallback) {
-        if (root == null) {
-            return fallback;
-        }
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            String value = element.getAsString();
-            return value == null || value.isBlank() ? fallback : value;
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static boolean readBoolean(JsonObject root, String key) {
-        if (root == null) {
-            return false;
-        }
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return false;
-        }
-        try {
-            return element.getAsBoolean();
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private static String readNumberText(JsonObject root, String key, String fallback) {
-        if (root == null) {
-            return fallback;
-        }
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            if (element.getAsJsonPrimitive().isNumber()) {
-                double value = element.getAsDouble();
-                if (Math.rint(value) == value) {
-                    return Integer.toString((int) value);
-                }
-                return String.format("%.2f", value);
-            }
-            return element.getAsString();
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static Double readDouble(JsonObject root, String key) {
-        if (root == null) {
-            return null;
-        }
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return null;
-        }
-        try {
-            return element.getAsDouble();
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static int toPercent(@Nullable Double value) {
-        if (value == null) {
-            return 0;
-        }
-        double normalized = value <= 1.0 ? value * 100.0 : value;
-        return Math.max(0, Math.min(100, (int) Math.round(normalized)));
-    }
 }
-

@@ -5,13 +5,121 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import org.jetbrains.annotations.Nullable;
 
 public final class StatusJsonParser {
     private StatusJsonParser() {}
 
     public static StatusOverviewData parseOverview(String json) {
+        JsonObject root = parseRootObject(json);
+
+        StatusOverviewData.FocusSnapshot focus = parseFocus(readObject(root, "focus"));
+        List<StatusOverviewData.RegionSnapshot> regions = parseRegions(readObjectArray(root, "regions"));
+        List<StatusOverviewData.EventSnapshot> activeEvents = parseEvents(readObjectArray(root, "activeEvents"));
+        List<StatusOverviewData.EffectSnapshot> projectEffects = parseEffects(readObjectArray(root, "projectEffects"));
+        List<StatusOverviewData.CompletionSnapshot> completedProjects = parseCompletions(readObjectArray(root, "completedProjects"));
+        boolean partial = readBoolean(root, "partial");
+
+        return new StatusOverviewData(
+                focus,
+                regions,
+                activeEvents,
+                projectEffects,
+                completedProjects,
+                partial
+        );
+    }
+
+    private static StatusOverviewData.FocusSnapshot parseFocus(@Nullable JsonObject focus) {
+        if (focus == null || focus.entrySet().isEmpty()) {
+            return StatusOverviewData.FocusSnapshot.empty();
+        }
+
+        String region = readString(focus, "focusRegion", "-");
+        String status = readString(focus, "status", "");
+        String sourceCategory = readString(focus, "sourceCategory", "");
+        boolean available = !region.equals("-") || !status.isBlank() || !sourceCategory.isBlank();
+
+        return new StatusOverviewData.FocusSnapshot(region, status, sourceCategory, available);
+    }
+
+    private static List<StatusOverviewData.RegionSnapshot> parseRegions(List<JsonObject> rawRegions) {
+        if (rawRegions.isEmpty()) {
+            return List.of();
+        }
+
+        List<StatusOverviewData.RegionSnapshot> parsed = new ArrayList<>();
+        for (JsonObject region : rawRegions) {
+            parsed.add(new StatusOverviewData.RegionSnapshot(
+                    readString(region, "region", "-"),
+                    readInt(region, "level", 0),
+                    toPercent(readDouble(region, "progressPercent")),
+                    readInt(region, "currentSellTotal", 0),
+                    readString(region, "dominantCategory", "")
+            ));
+        }
+        return List.copyOf(parsed);
+    }
+
+    private static List<StatusOverviewData.EventSnapshot> parseEvents(List<JsonObject> rawEvents) {
+        if (rawEvents.isEmpty()) {
+            return List.of();
+        }
+
+        List<StatusOverviewData.EventSnapshot> parsed = new ArrayList<>();
+        for (JsonObject event : rawEvents) {
+            String effectType = readFirstString(event, "effect_type", "effectType");
+            Double effectValue = readFirstDouble(event, "effect_value", "effectValue");
+            parsed.add(new StatusOverviewData.EventSnapshot(
+                    readFirstString(event, "name", "id"),
+                    readString(event, "region", "-"),
+                    buildEffectLabel(effectType, effectValue),
+                    readFirstString(event, "runtimeStatus", "status"),
+                    readBoolean(event, "isRuntimeActive")
+            ));
+        }
+        return List.copyOf(parsed);
+    }
+
+    private static List<StatusOverviewData.EffectSnapshot> parseEffects(List<JsonObject> rawEffects) {
+        if (rawEffects.isEmpty()) {
+            return List.of();
+        }
+
+        List<StatusOverviewData.EffectSnapshot> parsed = new ArrayList<>();
+        for (JsonObject effect : rawEffects) {
+            Double effectValue = readFirstDouble(effect, "effectValue", "effect_value");
+            parsed.add(new StatusOverviewData.EffectSnapshot(
+                    readFirstString(effect, "projectId", "project_id"),
+                    readFirstString(effect, "effectTarget", "effect_target"),
+                    readFirstString(effect, "effectType", "effect_type"),
+                    effectValue == null ? 0.0 : effectValue,
+                    readFirstBoolean(effect, "isEffectActive", "is_active")
+            ));
+        }
+        return List.copyOf(parsed);
+    }
+
+    private static List<StatusOverviewData.CompletionSnapshot> parseCompletions(List<JsonObject> rawCompleted) {
+        if (rawCompleted.isEmpty()) {
+            return List.of();
+        }
+
+        List<StatusOverviewData.CompletionSnapshot> parsed = new ArrayList<>();
+        for (JsonObject completion : rawCompleted) {
+            parsed.add(new StatusOverviewData.CompletionSnapshot(
+                    readString(completion, "projectId", "-"),
+                    readBoolean(completion, "isCompleted"),
+                    readBoolean(completion, "isEffectActive"),
+                    readInt(completion, "rewardMailCount", 0),
+                    readInt(completion, "rewardTotalAmount", 0)
+            ));
+        }
+        return List.copyOf(parsed);
+    }
+
+    private static JsonObject parseRootObject(String json) {
         if (json == null || json.isBlank()) {
             throw new IllegalArgumentException("status overview payload is empty");
         }
@@ -20,30 +128,15 @@ public final class StatusJsonParser {
         if (!parsed.isJsonObject()) {
             throw new IllegalArgumentException("status overview payload is not an object");
         }
-
-        JsonObject root = parsed.getAsJsonObject();
-        JsonObject focus = readObject(root, "focus");
-        List<JsonObject> regions = readObjectArray(root, "regions");
-        List<JsonObject> activeEvents = readObjectArray(root, "activeEvents");
-        List<JsonObject> projectEffects = readObjectArray(root, "projectEffects");
-        List<JsonObject> completedProjects = readObjectArray(root, "completedProjects");
-        boolean partial = readBoolean(root, "partial");
-        List<String> partialNotes = readStringArray(root, "partialNotes");
-        String generatedAt = readString(root, "generatedAt");
-
-        return new StatusOverviewData(
-                focus == null ? new JsonObject() : focus,
-                regions,
-                activeEvents,
-                projectEffects,
-                completedProjects,
-                partial,
-                partialNotes,
-                generatedAt
-        );
+        return parsed.getAsJsonObject();
     }
 
-    private static JsonObject readObject(JsonObject root, String key) {
+    @Nullable
+    private static JsonObject readObject(@Nullable JsonObject root, String key) {
+        if (root == null) {
+            return null;
+        }
+
         JsonElement element = root.get(key);
         if (element == null || !element.isJsonObject()) {
             return null;
@@ -51,7 +144,11 @@ public final class StatusJsonParser {
         return element.getAsJsonObject();
     }
 
-    private static List<JsonObject> readObjectArray(JsonObject root, String key) {
+    private static List<JsonObject> readObjectArray(@Nullable JsonObject root, String key) {
+        if (root == null) {
+            return List.of();
+        }
+
         JsonElement element = root.get(key);
         if (element == null || !element.isJsonArray()) {
             return List.of();
@@ -68,33 +165,14 @@ public final class StatusJsonParser {
                 objects.add(entry.getAsJsonObject());
             }
         }
-        return Collections.unmodifiableList(objects);
+        return List.copyOf(objects);
     }
 
-    private static List<String> readStringArray(JsonObject root, String key) {
-        JsonElement element = root.get(key);
-        if (element == null || !element.isJsonArray()) {
-            return List.of();
+    private static boolean readBoolean(@Nullable JsonObject root, String key) {
+        if (root == null) {
+            return false;
         }
 
-        List<String> items = new ArrayList<>();
-        for (JsonElement entry : element.getAsJsonArray()) {
-            if (entry == null || entry.isJsonNull()) {
-                continue;
-            }
-            try {
-                String value = entry.getAsString();
-                if (value != null && !value.isBlank()) {
-                    items.add(value);
-                }
-            } catch (Exception ignored) {
-                // skip invalid note entries
-            }
-        }
-        return Collections.unmodifiableList(items);
-    }
-
-    private static boolean readBoolean(JsonObject root, String key) {
         JsonElement element = root.get(key);
         if (element == null || element.isJsonNull()) {
             return false;
@@ -106,16 +184,142 @@ public final class StatusJsonParser {
         }
     }
 
-    private static String readString(JsonObject root, String key) {
+    private static boolean readFirstBoolean(@Nullable JsonObject root, String... keys) {
+        if (root == null) {
+            return false;
+        }
+
+        for (String key : keys) {
+            JsonElement element = root.get(key);
+            if (element == null || element.isJsonNull()) {
+                continue;
+            }
+            try {
+                return element.getAsBoolean();
+            } catch (Exception ignored) {
+                // keep searching
+            }
+        }
+        return false;
+    }
+
+    private static String readString(@Nullable JsonObject root, String key, String fallback) {
+        if (root == null) {
+            return fallback;
+        }
+
         JsonElement element = root.get(key);
         if (element == null || element.isJsonNull()) {
-            return "";
+            return fallback;
         }
         try {
-            return element.getAsString();
+            String value = element.getAsString();
+            return value == null || value.isBlank() ? fallback : value;
         } catch (Exception ignored) {
-            return "";
+            return fallback;
         }
     }
-}
 
+    private static String readFirstString(@Nullable JsonObject root, String... keys) {
+        if (root == null) {
+            return "";
+        }
+
+        for (String key : keys) {
+            JsonElement element = root.get(key);
+            if (element == null || element.isJsonNull()) {
+                continue;
+            }
+            try {
+                String value = element.getAsString();
+                if (value != null && !value.isBlank()) {
+                    return value;
+                }
+            } catch (Exception ignored) {
+                // keep searching
+            }
+        }
+        return "";
+    }
+
+    private static int readInt(@Nullable JsonObject root, String key, int fallback) {
+        if (root == null) {
+            return fallback;
+        }
+
+        JsonElement element = root.get(key);
+        if (element == null || element.isJsonNull()) {
+            return fallback;
+        }
+
+        try {
+            return element.getAsInt();
+        } catch (Exception ignored) {
+            try {
+                return Math.round(element.getAsFloat());
+            } catch (Exception ignoredAgain) {
+                return fallback;
+            }
+        }
+    }
+
+    @Nullable
+    private static Double readDouble(@Nullable JsonObject root, String key) {
+        if (root == null) {
+            return null;
+        }
+
+        JsonElement element = root.get(key);
+        if (element == null || element.isJsonNull()) {
+            return null;
+        }
+
+        try {
+            return element.getAsDouble();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    @Nullable
+    private static Double readFirstDouble(@Nullable JsonObject root, String... keys) {
+        if (root == null) {
+            return null;
+        }
+
+        for (String key : keys) {
+            JsonElement element = root.get(key);
+            if (element == null || element.isJsonNull()) {
+                continue;
+            }
+            try {
+                return element.getAsDouble();
+            } catch (Exception ignored) {
+                // keep searching
+            }
+        }
+        return null;
+    }
+
+    private static int toPercent(@Nullable Double value) {
+        if (value == null) {
+            return 0;
+        }
+
+        double normalized = value <= 1.0 ? value * 100.0 : value;
+        return Math.max(0, Math.min(100, (int) Math.round(normalized)));
+    }
+
+    private static String buildEffectLabel(String effectType, @Nullable Double effectValue) {
+        String type = effectType == null || effectType.isBlank() ? "Effect" : effectType;
+        if (effectValue == null) {
+            return type;
+        }
+
+        double value = effectValue;
+        if (Math.rint(value) == value) {
+            return type + " " + (int) value;
+        }
+        return type + " " + String.format("%.2f", value);
+    }
+}

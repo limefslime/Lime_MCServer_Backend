@@ -2,11 +2,11 @@ package com.namanseul.farmingmod.client.network;
 
 import com.namanseul.farmingmod.Config;
 import com.namanseul.farmingmod.NamanseulFarming;
-import com.namanseul.farmingmod.client.ui.screen.MailScreen;
-import com.namanseul.farmingmod.client.ui.screen.ShopScreen;
-import com.namanseul.farmingmod.client.ui.screen.InvestScreen;
 import com.namanseul.farmingmod.client.ui.screen.GameHubScreen;
+import com.namanseul.farmingmod.client.ui.screen.InvestScreen;
+import com.namanseul.farmingmod.client.ui.screen.MailScreen;
 import com.namanseul.farmingmod.client.ui.screen.PlayerOverviewScreen;
+import com.namanseul.farmingmod.client.ui.screen.ShopScreen;
 import com.namanseul.farmingmod.client.ui.screen.StatusScreen;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.UiScreenType;
@@ -21,37 +21,22 @@ public final class ClientUiResponseDispatcher {
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.execute(() -> {
             if (Config.networkDebugLog()) {
-                NamanseulFarming.LOGGER.info("[UI] recv response S->C id={} success={} action={} screen={}",
-                        payload.requestId(), payload.success(), payload.action().serialized(), payload.screenType().serialized());
+                NamanseulFarming.LOGGER.info(
+                        "[UI] recv response S->C id={} success={} action={} screen={}",
+                        payload.requestId(),
+                        payload.success(),
+                        payload.action().serialized(),
+                        payload.screenType().serialized()
+                );
             }
 
-            if (payload.screenType() == UiScreenType.HUB) {
-                handleHub(payload, minecraft);
-                return;
-            }
-
-            if (payload.screenType() == UiScreenType.SHOP) {
-                handleShop(payload, minecraft);
-                return;
-            }
-
-            if (payload.screenType() == UiScreenType.MAIL) {
-                handleMail(payload, minecraft);
-                return;
-            }
-
-            if (payload.screenType() == UiScreenType.INVEST) {
-                handleInvest(payload, minecraft);
-                return;
-            }
-
-            if (payload.screenType() == UiScreenType.STATUS) {
-                handleStatus(payload, minecraft);
-                return;
-            }
-
-            if (payload.screenType() == UiScreenType.PLAYER) {
-                handlePlayer(payload, minecraft);
+            switch (payload.screenType()) {
+                case HUB -> handleHub(payload, minecraft);
+                case SHOP -> handleShop(payload, minecraft);
+                case MAIL -> handleMail(payload, minecraft);
+                case INVEST -> handleInvest(payload, minecraft);
+                case STATUS -> handleStatus(payload, minecraft);
+                case PLAYER -> handlePlayer(payload, minecraft);
             }
         });
     }
@@ -85,7 +70,7 @@ public final class ClientUiResponseDispatcher {
             return;
         }
 
-        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+        if (shouldAutoOpenJsonScreen(payload)) {
             ShopScreen autoOpened = ShopScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
@@ -102,7 +87,7 @@ public final class ClientUiResponseDispatcher {
             return;
         }
 
-        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+        if (shouldAutoOpenJsonScreen(payload)) {
             MailScreen autoOpened = MailScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
@@ -119,7 +104,7 @@ public final class ClientUiResponseDispatcher {
             return;
         }
 
-        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+        if (shouldAutoOpenJsonScreen(payload)) {
             InvestScreen autoOpened = InvestScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
@@ -136,7 +121,7 @@ public final class ClientUiResponseDispatcher {
             return;
         }
 
-        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+        if (shouldAutoOpenJsonScreen(payload)) {
             StatusScreen autoOpened = StatusScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
@@ -153,9 +138,17 @@ public final class ClientUiResponseDispatcher {
             return;
         }
 
-        if (payload.success() && payload.dataJson() != null && !payload.dataJson().isBlank()) {
+        if (shouldAutoOpenJsonScreen(payload)) {
             PlayerOverviewScreen autoOpened = PlayerOverviewScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
+    }
+
+    private static boolean shouldAutoOpenJsonScreen(UiResponsePayload payload) {
+        return payload.success() && hasJsonData(payload);
+    }
+
+    private static boolean hasJsonData(UiResponsePayload payload) {
+        return payload.dataJson() != null && !payload.dataJson().isBlank();
     }
 }
