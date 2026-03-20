@@ -7,7 +7,6 @@ import com.namanseul.farmingmod.client.ui.tab.MailTabView;
 import com.namanseul.farmingmod.client.ui.tab.PlayerTabView;
 import com.namanseul.farmingmod.client.ui.tab.RegionTabView;
 import com.namanseul.farmingmod.client.ui.tab.ShopTabView;
-import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.HubSummaryData;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
@@ -17,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 
 public final class GameHubScreen extends BaseTabbedScreen {
@@ -32,25 +30,27 @@ public final class GameHubScreen extends BaseTabbedScreen {
     private final Map<String, HubTabView> tabViews = new LinkedHashMap<>();
 
     private HubSummaryData summaryData;
-    private List<Component> summaryLines = List.of();
     private String pendingRequestId;
-    private Button openTabButton;
     private boolean summaryPartial;
+    private boolean allowInstantEnter;
+
+    private List<Component> guidanceLines = List.of();
+    private List<Component> worldSignalLines = List.of();
 
     private int frameX;
     private int frameY;
     private int frameWidth;
     private int frameHeight;
 
-    private int actionX;
-    private int actionY;
-    private int actionWidth;
-    private int actionHeight;
+    private int guidanceX;
+    private int guidanceY;
+    private int guidanceWidth;
+    private int guidanceHeight;
 
-    private int summaryX;
-    private int summaryY;
-    private int summaryWidth;
-    private int summaryHeight;
+    private int signalX;
+    private int signalY;
+    private int signalWidth;
+    private int signalHeight;
 
     public GameHubScreen() {
         super(Component.translatable("screen.namanseulfarming.hub.title"));
@@ -77,15 +77,6 @@ public final class GameHubScreen extends BaseTabbedScreen {
         recalcLayout();
         initCommonButtons(frameX + frameWidth - 4, frameY + 8);
 
-        openTabButton = addRenderableWidget(UiButton.create(
-                Component.literal("Open"),
-                0,
-                0,
-                108,
-                20,
-                button -> openActiveTabScreen()
-        ));
-
         int tabGap = 4;
         int tabCount = 5;
         int tabAreaWidth = frameWidth - 20;
@@ -93,11 +84,10 @@ public final class GameHubScreen extends BaseTabbedScreen {
         initTabButtons(frameX + 10, frameY + 34, tabWidth, 20, tabGap);
 
         updateTabContent();
-        layoutButtons();
-
         if (summaryData == null) {
             requestSummary(UiAction.INIT);
         }
+        allowInstantEnter = true;
     }
 
     private void registerTabs() {
@@ -122,7 +112,9 @@ public final class GameHubScreen extends BaseTabbedScreen {
     protected void onTabChanged(String tabId) {
         lastSelectedTab = tabId;
         updateTabContent();
-        layoutButtons();
+        if (allowInstantEnter) {
+            openActiveTabScreen();
+        }
     }
 
     public void handleServerResponse(UiResponsePayload payload) {
@@ -159,18 +151,18 @@ public final class GameHubScreen extends BaseTabbedScreen {
     @Override
     protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         recalcLayout();
-        layoutButtons();
+        positionCommonButtons(frameX + frameWidth - 4, frameY + 8);
 
         renderPanel(graphics, frameX, frameY, frameWidth, frameHeight);
         renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
 
-        renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
-        renderSectionTitle(graphics, Component.literal("Next Action"), actionX + 6, actionY + 6);
-        renderActiveAction(graphics);
+        renderPanel(graphics, guidanceX, guidanceY, guidanceWidth, guidanceHeight);
+        renderSectionTitle(graphics, Component.literal("Next Step"), guidanceX + 6, guidanceY + 6);
+        renderClipped(graphics, guidanceX, guidanceY, guidanceWidth, guidanceHeight, () -> renderGuidanceLines(graphics));
 
-        renderPanel(graphics, summaryX, summaryY, summaryWidth, summaryHeight);
-        renderSectionTitle(graphics, Component.literal("Quick Summary"), summaryX + 6, summaryY + 6);
-        renderClipped(graphics, summaryX, summaryY, summaryWidth, summaryHeight, () -> renderSummaryLines(graphics));
+        renderPanel(graphics, signalX, signalY, signalWidth, signalHeight);
+        renderSectionTitle(graphics, Component.literal("World Signals"), signalX + 6, signalY + 6);
+        renderClipped(graphics, signalX, signalY, signalWidth, signalHeight, () -> renderWorldSignalLines(graphics));
     }
 
     private void requestSummary(UiAction action) {
@@ -180,25 +172,11 @@ public final class GameHubScreen extends BaseTabbedScreen {
     }
 
     private void openActiveTabScreen() {
-        if (TAB_SHOP.equals(activeTabId())) {
-            Minecraft.getInstance().setScreen(new ShopScreen(this));
+        HubTabView tabView = tabViews.get(activeTabId());
+        if (tabView == null) {
             return;
         }
-        if (TAB_MAIL.equals(activeTabId())) {
-            Minecraft.getInstance().setScreen(new MailScreen(this));
-            return;
-        }
-        if (TAB_INVEST.equals(activeTabId())) {
-            Minecraft.getInstance().setScreen(new InvestScreen(this));
-            return;
-        }
-        if (TAB_REGION.equals(activeTabId())) {
-            Minecraft.getInstance().setScreen(new StatusScreen(this));
-            return;
-        }
-        if (TAB_PLAYER.equals(activeTabId())) {
-            Minecraft.getInstance().setScreen(new PlayerOverviewScreen(this));
-        }
+        tabView.openFromHub(this);
     }
 
     private void recalcLayout() {
@@ -210,94 +188,90 @@ public final class GameHubScreen extends BaseTabbedScreen {
         int contentX = frameX + 10;
         int contentWidth = frameWidth - 20;
 
-        actionX = contentX;
-        actionY = frameY + 58;
-        actionWidth = contentWidth;
-        actionHeight = 84;
+        guidanceX = contentX;
+        guidanceY = frameY + 58;
+        guidanceWidth = contentWidth;
+        guidanceHeight = 96;
 
-        summaryX = contentX;
-        summaryY = actionY + actionHeight + 8;
-        summaryWidth = contentWidth;
-        summaryHeight = Math.max(68, frameY + frameHeight - 10 - summaryY);
-    }
-
-    private void layoutButtons() {
-        positionCommonButtons(frameX + frameWidth - 4, frameY + 8);
-
-        if (openTabButton == null) {
-            return;
-        }
-
-        HubTabView tabView = tabViews.get(activeTabId());
-        if (tabView == null) {
-            openTabButton.visible = false;
-            openTabButton.active = false;
-            return;
-        }
-
-        int openWidth = clampInt(actionWidth / 3, 92, 136);
-        int openX = actionX + actionWidth - openWidth - 8;
-        int openY = actionY + actionHeight - 28;
-
-        openTabButton.visible = true;
-        openTabButton.active = true;
-        openTabButton.setPosition(openX, openY);
-        openTabButton.setWidth(openWidth);
-        openTabButton.setHeight(20);
-        openTabButton.setMessage(tabView.openButtonLabel());
+        signalX = contentX;
+        signalY = guidanceY + guidanceHeight + 8;
+        signalWidth = contentWidth;
+        signalHeight = Math.max(54, frameY + frameHeight - 10 - signalY);
     }
 
     private void updateTabContent() {
         HubTabView tabView = tabViews.get(activeTabId());
         if (tabView == null) {
-            summaryLines = List.of();
-            setEmpty(Component.literal("No tab selected."));
+            guidanceLines = List.of(Component.literal("No tab selected."));
+            worldSignalLines = List.of(Component.literal("World signals unavailable."));
             return;
         }
 
+        guidanceLines = buildGuidanceLines(tabView);
+        worldSignalLines = buildWorldSignalLines();
+        setEmpty(null);
+    }
+
+    private List<Component> buildGuidanceLines(HubTabView tabView) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal("Selected tab: " + tabView.tabLabel().getString()));
+        lines.add(Component.literal("Choosing a tab opens that screen immediately."));
         if (summaryData == null) {
-            summaryLines = List.of(Component.literal("Loading hub overview..."));
-            setEmpty(null);
-            return;
+            lines.add(Component.literal("Loading tab guidance..."));
+            return lines;
+        }
+        lines.addAll(tabView.buildEntryHints(summaryData));
+        return lines;
+    }
+
+    private List<Component> buildWorldSignalLines() {
+        if (summaryData == null) {
+            return List.of(Component.literal("Loading world signals..."));
         }
 
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("Focus now: " + safe(summaryData.currentFocusRegion())));
-        lines.add(Component.literal("Active events to watch: " + summaryData.activeEventCount()));
-        lines.addAll(tabView.summaryLines(summaryData));
-        if (summaryPartial) {
-            lines.add(Component.literal("Some overview values are still syncing."));
-        }
+        int pendingRewards = Math.max(0, summaryData.unclaimedMailCount());
+        int liveEvents = Math.max(0, summaryData.activeEventCount());
+        String focusRegion = safe(summaryData.currentFocusRegion());
 
-        summaryLines = lines;
-        if (summaryLines.isEmpty()) {
-            setEmpty(Component.literal("No overview available."));
+        if (pendingRewards > 0) {
+            lines.add(Component.literal("Mailbox rewards waiting: " + pendingRewards));
         } else {
-            setEmpty(null);
-        }
-    }
-
-    private void renderActiveAction(GuiGraphics graphics) {
-        HubTabView tabView = tabViews.get(activeTabId());
-        if (tabView == null) {
-            graphics.drawString(font, Component.literal("Select a tab."), actionX + 8, actionY + 26, 0xDDE6F9, false);
-            return;
+            lines.add(Component.literal("No pending mailbox rewards."));
         }
 
-        int textX = actionX + 8;
-        int textY = actionY + 24;
+        if (liveEvents > 0) {
+            lines.add(Component.literal("Live regional events: " + liveEvents));
+        } else {
+            lines.add(Component.literal("No live regional events now."));
+        }
 
-        graphics.drawString(font, Component.literal("Selected: " + tabView.tabLabel().getString()), textX, textY, 0xFFFFFF, false);
-        graphics.drawString(font, tabView.actionTitle(), textX, textY + 14, 0xEAF1FF, false);
-        graphics.drawString(font, tabView.actionHint(), textX, textY + 28, 0xBFD0E8, false);
+        if (!"-".equals(focusRegion)) {
+            lines.add(Component.literal("Current focus region: " + focusRegion));
+        }
+        if (summaryPartial) {
+            lines.add(Component.literal("Some signals are still syncing."));
+        }
+        return lines;
     }
 
-    private void renderSummaryLines(GuiGraphics graphics) {
-        int lineY = summaryY + 22;
-        for (Component line : summaryLines) {
-            graphics.drawString(font, line, summaryX + 8, lineY, 0xEAF1FF, false);
+    private void renderGuidanceLines(GuiGraphics graphics) {
+        int lineY = guidanceY + 22;
+        for (Component line : guidanceLines) {
+            graphics.drawString(font, line, guidanceX + 8, lineY, 0xEAF1FF, false);
             lineY += 12;
-            if (lineY > summaryY + summaryHeight - 10) {
+            if (lineY > guidanceY + guidanceHeight - 10) {
+                break;
+            }
+        }
+    }
+
+    private void renderWorldSignalLines(GuiGraphics graphics) {
+        int lineY = signalY + 22;
+        for (Component line : worldSignalLines) {
+            graphics.drawString(font, line, signalX + 8, lineY, 0xEAF1FF, false);
+            lineY += 12;
+            if (lineY > signalY + signalHeight - 10) {
                 break;
             }
         }
