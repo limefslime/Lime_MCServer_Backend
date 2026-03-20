@@ -1,0 +1,24 @@
+node_modules/
+
+# local env/config
+.env
+.env.*
+.vscode/
+
+# logs
+*.log
+*_out.log
+*_err.log
+
+# backend runtime/cache artifacts
+tmp_*.sqlite3
+
+# gradle/build artifacts
+**/.gradle/
+**/.gradle-home/
+**/build/
+**/runs/
+
+# OS files
+.DS_Store
+Thumbs.db
