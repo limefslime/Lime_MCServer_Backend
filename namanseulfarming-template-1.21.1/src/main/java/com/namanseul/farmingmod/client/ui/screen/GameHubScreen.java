@@ -7,7 +7,6 @@ import com.namanseul.farmingmod.client.ui.tab.PlayerTabView;
 import com.namanseul.farmingmod.client.ui.tab.RegionTabView;
 import com.namanseul.farmingmod.client.ui.tab.ShopTabView;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
-import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,8 +22,7 @@ public final class GameHubScreen extends BaseGameScreen {
     private static final String MENU_REGION = "region";
     private static final String MENU_PLAYER = "player";
 
-    private static final int MENU_COLUMNS = 2;
-    private static final int MENU_BUTTON_HEIGHT = 24;
+    private static final int MENU_BUTTON_HEIGHT = 22;
     private static final int MENU_BUTTON_GAP = 8;
 
     private final Map<String, HubTabView> menuViews = new LinkedHashMap<>();
@@ -82,12 +80,6 @@ public final class GameHubScreen extends BaseGameScreen {
     }
 
     public void handleServerResponse(UiResponsePayload payload) {
-        if (payload.action() == UiAction.OPEN) {
-            return;
-        }
-
-        setLoading(false);
-
         if (!payload.success()) {
             String message = payload.error() == null || payload.error().isBlank()
                     ? "Unable to open hub menu."
@@ -106,20 +98,19 @@ public final class GameHubScreen extends BaseGameScreen {
 
         renderPanel(graphics, frameX, frameY, frameWidth, frameHeight);
         renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
-        graphics.drawString(font, Component.literal("Select a menu to continue."), frameX + 10, frameY + 30, 0xC8D3E9, false);
         renderPanel(graphics, menuX, menuY, menuWidth, menuHeight);
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(420, width - 20);
-        frameHeight = Math.min(250, height - 24);
+        frameWidth = Math.min(340, width - 20);
+        frameHeight = Math.min(260, height - 24);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 
         menuX = frameX + 10;
-        menuY = frameY + 46;
+        menuY = frameY + 34;
         menuWidth = frameWidth - 20;
-        menuHeight = Math.max(72, frameHeight - 56);
+        menuHeight = Math.max(84, frameHeight - 44);
     }
 
     private void initMenuButtons() {
@@ -128,20 +119,14 @@ public final class GameHubScreen extends BaseGameScreen {
         }
         menuButtons.clear();
 
-        int buttonWidth = Math.max(92, (menuWidth - MENU_BUTTON_GAP) / MENU_COLUMNS);
-        int baseX = menuX + (menuWidth - (buttonWidth * MENU_COLUMNS + MENU_BUTTON_GAP)) / 2;
-        int baseY = menuY + 12;
+        int buttonWidth = Math.min(220, Math.max(140, menuWidth - 24));
+        int baseX = menuX + (menuWidth - buttonWidth) / 2;
+        int baseY = menuY + 10;
 
         int index = 0;
         for (Map.Entry<String, HubTabView> entry : menuViews.entrySet()) {
-            int row = index / MENU_COLUMNS;
-            int column = index % MENU_COLUMNS;
-
-            int x = baseX + column * (buttonWidth + MENU_BUTTON_GAP);
-            if (isLastOddEntry(index, menuViews.size())) {
-                x = menuX + (menuWidth - buttonWidth) / 2;
-            }
-            int y = baseY + row * (MENU_BUTTON_HEIGHT + MENU_BUTTON_GAP);
+            int x = baseX;
+            int y = baseY + index * (MENU_BUTTON_HEIGHT + MENU_BUTTON_GAP);
 
             final String menuId = entry.getKey();
             Button button = addRenderableWidget(UiButton.create(
@@ -163,9 +148,5 @@ public final class GameHubScreen extends BaseGameScreen {
             return;
         }
         menuView.openFromHub(this);
-    }
-
-    private static boolean isLastOddEntry(int index, int size) {
-        return size % 2 == 1 && index == size - 1;
     }
 }

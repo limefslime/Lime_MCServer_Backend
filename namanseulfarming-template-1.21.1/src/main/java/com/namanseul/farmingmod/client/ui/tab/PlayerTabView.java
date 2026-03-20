@@ -8,7 +8,7 @@ import net.minecraft.network.chat.Component;
 public final class PlayerTabView implements HubTabView {
     @Override
     public Component menuLabel() {
-        return Component.literal("Player");
+        return Component.literal("Profile");
     }
 
     @Override
