@@ -1,0 +1,285 @@
+package com.namanseul.farmingmod.client.ui.screen;
+
+import com.namanseul.farmingmod.client.network.UiClientNetworking;
+import com.namanseul.farmingmod.client.ui.status.StatusJsonParser;
+import com.namanseul.farmingmod.client.ui.status.StatusOverviewData;
+import com.namanseul.farmingmod.client.ui.status.StatusViewFormatter;
+import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
+import com.namanseul.farmingmod.network.UiAction;
+import com.namanseul.farmingmod.network.payload.UiResponsePayload;
+import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+public final class StatusScreen extends BaseTabbedScreen {
+    private static String lastSelectedTab = StatusViewFormatter.TAB_FOCUS;
+
+    private final Screen returnScreen;
+
+    private StatusOverviewData overviewData;
+    private UiListPanel listPanel;
+    private List<Component> detailLines = List.of();
+    private String pendingRequestId;
+    private boolean listLoading;
+
+    private int frameX;
+    private int frameY;
+    private int frameWidth;
+    private int frameHeight;
+
+    private int summaryX;
+    private int summaryY;
+    private int summaryWidth;
+    private int summaryHeight;
+
+    private int listX;
+    private int listY;
+    private int listWidth;
+    private int listHeight;
+
+    private int detailX;
+    private int detailY;
+    private int detailWidth;
+    private int detailHeight;
+
+    public StatusScreen(@Nullable Screen returnScreen) {
+        super(Component.translatable("screen.namanseulfarming.status.title"));
+        this.returnScreen = returnScreen;
+        registerTabs();
+        setInitialTab(lastSelectedTab);
+    }
+
+    public static StatusScreen openStandalone() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof StatusScreen current) {
+            return current;
+        }
+
+        Screen parent = minecraft.screen instanceof GameHubScreen ? minecraft.screen : new GameHubScreen();
+        StatusScreen screen = new StatusScreen(parent);
+        minecraft.setScreen(screen);
+        return screen;
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        recalcLayout();
+        initCommonButtons(frameX + frameWidth - 4, frameY + 8);
+        initRefreshButton(frameX + frameWidth - 4, frameY + 8);
+        if (closeButton != null) {
+            closeButton.setMessage(Component.translatable("screen.namanseulfarming.status.back"));
+        }
+
+        int tabGap = 4;
+        int tabCount = 4;
+        int tabAreaWidth = frameWidth - 20;
+        int tabWidth = clampInt((tabAreaWidth - tabGap * (tabCount - 1)) / tabCount, 52, 90);
+        initTabButtons(frameX + 10, frameY + 34, tabWidth, 20, tabGap);
+
+        listPanel = new UiListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
+        updateTabContent();
+        requestOverview(false);
+    }
+
+    @Override
+    protected void onRefreshPressed() {
+        requestOverview(true);
+    }
+
+    @Override
+    public void onClose() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (returnScreen != null) {
+            minecraft.setScreen(returnScreen);
+            return;
+        }
+        minecraft.setScreen(new GameHubScreen());
+    }
+
+    @Override
+    protected void onTabChanged(String tabId) {
+        lastSelectedTab = tabId;
+        updateTabContent();
+    }
+
+    public void handleServerResponse(UiResponsePayload payload) {
+        if (payload.action() != UiAction.STATUS_OVERVIEW && payload.action() != UiAction.STATUS_REFRESH) {
+            return;
+        }
+        if (pendingRequestId != null && !pendingRequestId.equals(payload.requestId())) {
+            return;
+        }
+
+        pendingRequestId = null;
+        listLoading = false;
+        setLoading(false);
+
+        if (!payload.success()) {
+            setError(payload.error() == null || payload.error().isBlank()
+                    ? "Could not load status overview."
+                    : payload.error());
+            updateActionButtons();
+            return;
+        }
+
+        try {
+            overviewData = StatusJsonParser.parseOverview(payload.dataJson());
+            setError(null);
+            updateTabContent();
+        } catch (Exception ex) {
+            setError("Could not read status overview data.");
+        }
+
+        updateActionButtons();
+    }
+
+    @Override
+    protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        recalcLayout();
+        positionCommonButtons(frameX + frameWidth - 4, frameY + 8);
+        updateActionButtons();
+
+        renderPanel(graphics, frameX, frameY, frameWidth, frameHeight);
+        renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
+
+        renderPanel(graphics, summaryX, summaryY, summaryWidth, summaryHeight);
+        renderSectionTitle(graphics, Component.literal("At a Glance"), summaryX + 6, summaryY + 6);
+        renderClipped(graphics, summaryX, summaryY, summaryWidth, summaryHeight, () -> renderSummaryLines(graphics));
+
+        renderPanel(graphics, listX, listY, listWidth, listHeight);
+        renderSectionTitle(graphics, listPanelTitle(), listX + 6, listY + 6);
+        if (listPanel != null) {
+            listPanel.render(graphics, font, mouseX, mouseY);
+        }
+
+        renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
+        renderSectionTitle(graphics, Component.literal("Selected Detail"), detailX + 6, detailY + 6);
+        renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () -> renderDetailLines(graphics));
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (listPanel != null && listPanel.mouseClicked(mouseX, mouseY, button)) {
+            updateDetailLines();
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (listPanel != null && listPanel.mouseScrolled(mouseX, mouseY, scrollY)) {
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    private void registerTabs() {
+        addTab(StatusViewFormatter.TAB_FOCUS, Component.translatable("screen.namanseulfarming.status.tab.focus"));
+        addTab(StatusViewFormatter.TAB_REGION, Component.translatable("screen.namanseulfarming.status.tab.region"));
+        addTab(StatusViewFormatter.TAB_EVENT, Component.translatable("screen.namanseulfarming.status.tab.event"));
+        addTab(StatusViewFormatter.TAB_COMPLETION, Component.translatable("screen.namanseulfarming.status.tab.completion"));
+    }
+
+    private void requestOverview(boolean forceRefresh) {
+        listLoading = true;
+        setLoading(true, Component.literal("Loading world status..."));
+        setError(null);
+        pendingRequestId = forceRefresh
+                ? UiClientNetworking.requestStatusRefresh()
+                : UiClientNetworking.requestStatusOverview(false);
+        updateActionButtons();
+    }
+
+    private void updateTabContent() {
+        if (listPanel == null) {
+            return;
+        }
+
+        List<Component> entries = StatusViewFormatter.buildListEntries(overviewData, activeTabId());
+        listPanel.setEntries(entries);
+        if (entries.isEmpty()) {
+            setEmpty(Component.translatable("screen.namanseulfarming.status.empty"));
+        } else {
+            setEmpty(null);
+        }
+        updateDetailLines();
+    }
+
+    private void updateDetailLines() {
+        int selectedIndex = listPanel == null ? 0 : listPanel.selectedIndex();
+        detailLines = StatusViewFormatter.buildDetailLines(overviewData, activeTabId(), selectedIndex);
+    }
+
+    private Component listPanelTitle() {
+        return switch (activeTabId()) {
+            case StatusViewFormatter.TAB_FOCUS -> Component.literal("Focus");
+            case StatusViewFormatter.TAB_REGION -> Component.literal("Regions");
+            case StatusViewFormatter.TAB_EVENT -> Component.literal("Events");
+            case StatusViewFormatter.TAB_COMPLETION -> Component.literal("Projects");
+            default -> Component.literal("List");
+        };
+    }
+
+    private void renderSummaryLines(GuiGraphics graphics) {
+        List<Component> summaryLines = StatusViewFormatter.buildSummaryLines(overviewData);
+        int lineY = summaryY + 20;
+        int maxY = summaryY + summaryHeight - 10;
+        for (Component line : summaryLines) {
+            if (lineY > maxY) {
+                break;
+            }
+            graphics.drawString(font, line, summaryX + 8, lineY, 0xDDE6F9, false);
+            lineY += 12;
+        }
+    }
+
+    private void renderDetailLines(GuiGraphics graphics) {
+        int lineY = detailY + 22;
+        int maxY = detailY + detailHeight - 10;
+        for (Component line : detailLines) {
+            if (lineY > maxY) {
+                break;
+            }
+            graphics.drawString(font, line, detailX + 8, lineY, 0xEAF1FF, false);
+            lineY += 12;
+        }
+    }
+
+    private void updateActionButtons() {
+        if (refreshButton != null) {
+            refreshButton.active = !listLoading;
+        }
+        if (closeButton != null) {
+            closeButton.active = true;
+        }
+    }
+
+    private void recalcLayout() {
+        frameWidth = Math.min(560, width - 20);
+        frameHeight = Math.min(360, height - 36);
+        frameX = (width - frameWidth) / 2;
+        frameY = (height - frameHeight) / 2;
+
+        summaryX = frameX + 10;
+        summaryY = frameY + 58;
+        summaryWidth = frameWidth - 20;
+        summaryHeight = 62;
+
+        listX = frameX + 10;
+        listY = summaryY + summaryHeight + 6;
+        int innerWidth = frameWidth - 20;
+        int preferredListWidth = clampInt(innerWidth * 36 / 100, 108, 194);
+        listWidth = Math.max(96, preferredListWidth);
+        listHeight = Math.max(60, frameY + frameHeight - 10 - listY);
+
+        detailX = listX + listWidth + 8;
+        detailY = listY;
+        detailWidth = Math.max(90, innerWidth - listWidth - 8);
+        detailHeight = listHeight;
+    }
+}
