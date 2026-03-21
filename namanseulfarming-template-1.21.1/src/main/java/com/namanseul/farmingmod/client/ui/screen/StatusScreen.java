@@ -5,6 +5,7 @@ import com.namanseul.farmingmod.client.ui.status.StatusJsonParser;
 import com.namanseul.farmingmod.client.ui.status.StatusOverviewData;
 import com.namanseul.farmingmod.client.ui.status.StatusViewFormatter;
 import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import java.util.List;
@@ -219,11 +220,13 @@ public final class StatusScreen extends BaseTabbedScreen {
         List<Component> summaryLines = StatusViewFormatter.buildSummaryLines(overviewData);
         int lineY = summaryY + 20;
         int maxY = summaryY + summaryHeight - 10;
+        int contentX = summaryX + 8;
+        int contentWidth = Math.max(0, summaryWidth - 16);
         for (Component line : summaryLines) {
             if (lineY > maxY) {
                 break;
             }
-            graphics.drawString(font, line, summaryX + 8, lineY, 0xDDE6F9, false);
+            drawStructuredLine(graphics, line.getString(), contentX, lineY, contentWidth, 0xDDE6F9, 0xEAF1FF);
             lineY += 12;
         }
     }
@@ -231,11 +234,13 @@ public final class StatusScreen extends BaseTabbedScreen {
     private void renderDetailLines(GuiGraphics graphics) {
         int lineY = detailY + 22;
         int maxY = detailY + detailHeight - 10;
+        int contentX = detailX + 8;
+        int contentWidth = Math.max(0, detailWidth - 16);
         for (Component line : detailLines) {
             if (lineY > maxY) {
                 break;
             }
-            graphics.drawString(font, line, detailX + 8, lineY, 0xEAF1FF, false);
+            drawStructuredLine(graphics, line.getString(), contentX, lineY, contentWidth, 0xDDE6F9, 0xEAF1FF);
             lineY += 12;
         }
     }
@@ -271,5 +276,27 @@ public final class StatusScreen extends BaseTabbedScreen {
         detailY = listY;
         detailWidth = Math.max(90, innerWidth - listWidth - 8);
         detailHeight = listHeight;
+    }
+
+    private void drawStructuredLine(
+            GuiGraphics graphics,
+            String text,
+            int x,
+            int y,
+            int width,
+            int labelColor,
+            int valueColor
+    ) {
+        int colon = text.indexOf(':');
+        if (colon > 0 && colon < text.length() - 1) {
+            String label = text.substring(0, colon + 1).trim();
+            String value = text.substring(colon + 1).trim();
+            if (!value.isBlank() && label.length() <= 24) {
+                int labelWidth = Math.max(54, Math.min(126, width / 2));
+                UiTextRender.drawLabelValue(graphics, font, label, value, x, y, width, labelWidth, labelColor, valueColor);
+                return;
+            }
+        }
+        UiTextRender.drawEllipsized(graphics, font, text, x, y, width, valueColor);
     }
 }

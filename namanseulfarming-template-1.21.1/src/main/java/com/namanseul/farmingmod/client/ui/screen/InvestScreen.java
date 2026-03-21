@@ -7,6 +7,7 @@ import com.namanseul.farmingmod.client.ui.invest.InvestStockViewData;
 import com.namanseul.farmingmod.client.ui.invest.InvestTradeResultViewData;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import java.util.ArrayList;
@@ -20,6 +21,9 @@ import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 public final class InvestScreen extends BaseGameScreen {
+    private static final int DETAIL_LABEL_WIDTH = 72;
+    private static final int ACTION_LABEL_WIDTH = 58;
+
     private final Screen returnScreen;
     private final List<InvestStockViewData> stocks = new ArrayList<>();
 
@@ -251,6 +255,7 @@ public final class InvestScreen extends BaseGameScreen {
         listPanelWidth = nextWidth;
         listPanelHeight = nextHeight;
         stockListPanel = new UiListPanel(nextX, nextY, nextWidth, nextHeight);
+        stockListPanel.setRowRenderer(this::renderStockListRow);
         refreshListEntries();
     }
 
@@ -275,49 +280,87 @@ public final class InvestScreen extends BaseGameScreen {
     }
 
     private void renderDetailPanel(GuiGraphics graphics) {
-        int x = detailX + 8;
+        int contentX = detailX + 8;
+        int contentWidth = Math.max(0, detailWidth - 16);
         int y = detailY + 22;
 
         if (selectedStock == null) {
-            graphics.drawString(font, Component.literal("Select a stock."), x, y, 0xC7D7F1, false);
+            UiTextRender.drawEllipsized(graphics, font, "Select a stock.", contentX, y, contentWidth, 0xC7D7F1);
             return;
         }
 
-        graphics.drawString(font, Component.literal(selectedStock.name()), x, y, 0xFFFFFF, false);
-        int dividerY = y + 10;
-        graphics.fill(x, dividerY, x + detailWidth - 20, dividerY + 1, 0xAA5F769A);
+        UiTextRender.drawEllipsized(graphics, font, selectedStock.name(), contentX, y, contentWidth, 0xFFFFFF);
+        int dividerY = y + font.lineHeight + 2;
+        graphics.fill(contentX, dividerY, contentX + contentWidth, dividerY + 1, 0xAA5F769A);
 
         y += 18;
-        graphics.drawString(font, Component.literal("Current: " + formatAmount(selectedStock.currentPrice())), x, y, 0xEAF1FF, false);
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Current:",
+                formatAmount(selectedStock.currentPrice()),
+                contentX,
+                y,
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                0xEAF1FF
+        );
         y += 13;
-        graphics.drawString(font, Component.literal("Holding: " + formatAmount(selectedStock.holdingQuantity())), x, y, 0xEAF1FF, false);
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Holding:",
+                formatAmount(selectedStock.holdingQuantity()),
+                contentX,
+                y,
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                0xEAF1FF
+        );
         y += 13;
-        graphics.drawString(font, Component.literal("Avg Buy: " + formatAmount(selectedStock.avgBuyPrice())), x, y, 0xEAF1FF, false);
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Avg Buy:",
+                formatAmount(selectedStock.avgBuyPrice()),
+                contentX,
+                y,
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                0xEAF1FF
+        );
         y += 17;
 
         int pnlValue = selectedStock.unrealizedPnl();
-        String pnlPrefix = pnlValue >= 0 ? "+" : "-";
-        int pnlAbs = Math.abs(pnlValue);
+        String pnlText = (pnlValue >= 0 ? "+" : "-") + formatAmount(Math.abs(pnlValue));
         int pnlColor = pnlValue > 0 ? 0x91F7A2 : pnlValue < 0 ? 0xF7A4A4 : 0xEAF1FF;
-        graphics.drawString(
+        UiTextRender.drawLabelValue(
+                graphics,
                 font,
-                Component.literal("PnL: " + pnlPrefix + formatAmount(pnlAbs)),
-                x,
+                "PnL:",
+                pnlText,
+                contentX,
                 y,
-                pnlColor,
-                false
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                pnlColor
         );
     }
 
     private void renderActionPanel(GuiGraphics graphics) {
-        int labelX = actionX + 10;
-        int valueX = labelX + 40;
+        int contentX = actionX + 10;
+        int contentWidth = Math.max(0, actionWidth - 20);
         int y = actionY + 50;
 
         Integer quantity = validateQuantityInput();
         String buyValue = "-";
         String sellValue = "-";
         String totalValue = "-";
+        String feeValue = null;
         if (quantity != null && selectedStock != null) {
             int feeAmount = estimateFeeAmount(quantity);
             long buyTotal = estimateBuyTotal(quantity);
@@ -326,30 +369,40 @@ public final class InvestScreen extends BaseGameScreen {
             sellValue = formatAmount(sellTotal);
             totalValue = formatAmount(calculateTotalPrice(quantity));
             if (feeAmount > 0) {
-                totalValue = totalValue + " (fee: " + formatAmount(feeAmount) + ")";
+                feeValue = formatAmount(feeAmount);
             }
         }
 
-        graphics.drawString(font, Component.literal("Buy:"), labelX, y, 0xC7D7F1, false);
-        graphics.drawString(font, Component.literal(buyValue), valueX, y, 0xEAF1FF, false);
+        UiTextRender.drawLabelValue(graphics, font, "Buy:", buyValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
         y += 12;
-        graphics.drawString(font, Component.literal("Sell:"), labelX, y, 0xC7D7F1, false);
-        graphics.drawString(font, Component.literal(sellValue), valueX, y, 0xEAF1FF, false);
-
+        UiTextRender.drawLabelValue(graphics, font, "Sell:", sellValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
         y += 16;
-        graphics.drawString(font, Component.literal("Total:"), labelX, y, 0xC7D7F1, false);
-        graphics.drawString(font, Component.literal(totalValue), valueX, y, 0xEAF1FF, false);
+        UiTextRender.drawLabelValue(graphics, font, "Total:", totalValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        if (feeValue != null) {
+            y += 12;
+            UiTextRender.drawLabelValue(graphics, font, "Fee:", feeValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        }
         y += 12;
-        graphics.drawString(font, Component.literal("Wallet:"), labelX, y, 0xC7D7F1, false);
-        graphics.drawString(font, Component.literal(formatAmount(walletBalance)), valueX, y, 0xDDE6F9, false);
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Wallet:",
+                formatAmount(walletBalance),
+                contentX,
+                y,
+                contentWidth,
+                ACTION_LABEL_WIDTH,
+                0xC7D7F1,
+                0xDDE6F9
+        );
 
         if (inputError != null && !inputError.isBlank()) {
             y += 14;
-            graphics.drawString(font, Component.literal(inputError), labelX, y, 0xFF8E8E, false);
+            UiTextRender.drawEllipsized(graphics, font, inputError, contentX, y, contentWidth, 0xFF8E8E);
         }
         if (statusMessage != null && !statusMessage.isBlank()) {
             y += 14;
-            graphics.drawString(font, Component.literal(statusMessage), labelX, y, 0xDDE6F9, false);
+            UiTextRender.drawEllipsized(graphics, font, statusMessage, contentX, y, contentWidth, 0xDDE6F9);
         }
     }
 
@@ -578,7 +631,7 @@ public final class InvestScreen extends BaseGameScreen {
         }
         List<Component> entries = new ArrayList<>();
         for (InvestStockViewData stock : stocks) {
-            entries.add(Component.literal(stock.listLabel()));
+            entries.add(Component.literal(stock.stockId() == null ? "" : stock.stockId()));
         }
         stockListPanel.setEntries(entries);
     }
@@ -679,6 +732,48 @@ public final class InvestScreen extends BaseGameScreen {
             return false;
         }
         return selectedStock.holdingQuantity() >= quantity;
+    }
+
+    private void renderStockListRow(
+            GuiGraphics graphics,
+            net.minecraft.client.gui.Font listFont,
+            int rowIndex,
+            Component entry,
+            int rowX,
+            int rowY,
+            int rowWidth,
+            int rowHeight,
+            boolean selected
+    ) {
+        if (rowIndex < 0 || rowIndex >= stocks.size()) {
+            UiTextRender.drawEllipsized(graphics, listFont, entry.getString(), rowX, rowY, rowWidth, 0xFFFFFF);
+            return;
+        }
+
+        InvestStockViewData stock = stocks.get(rowIndex);
+        int gap = 6;
+        int changeWidth = Math.max(44, Math.min(84, rowWidth / 4));
+        int priceWidth = Math.max(54, Math.min(96, rowWidth / 3));
+        int nameWidth = Math.max(28, rowWidth - changeWidth - priceWidth - gap * 2);
+
+        int nameX = rowX;
+        int priceRight = rowX + nameWidth + gap + priceWidth;
+        int changeRight = rowX + rowWidth;
+
+        String priceText = formatAmount(stock.currentPrice());
+        String changeText;
+        if (stock.changeAmount() > 0) {
+            changeText = "+" + formatAmount(stock.changeAmount());
+        } else if (stock.changeAmount() < 0) {
+            changeText = "-" + formatAmount(Math.abs(stock.changeAmount()));
+        } else {
+            changeText = "0";
+        }
+        int changeColor = stock.changeAmount() > 0 ? 0x91F7A2 : stock.changeAmount() < 0 ? 0xF7A4A4 : 0xC7D7F1;
+
+        UiTextRender.drawEllipsized(graphics, listFont, stock.name(), nameX, rowY, nameWidth, 0xFFFFFF);
+        UiTextRender.drawRightAligned(graphics, listFont, priceText, priceRight, rowY, priceWidth, 0xE8F0FF);
+        UiTextRender.drawRightAligned(graphics, listFont, changeText, changeRight, rowY, changeWidth, changeColor);
     }
 
     private void updateActionButtons() {

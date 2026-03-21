@@ -1,5 +1,6 @@
 package com.namanseul.farmingmod.client.ui.shop;
 
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -13,13 +14,23 @@ public final class ShopActionPanelView {
             Font font,
             int x,
             int y,
+            int width,
             @Nullable String quantityError,
             @Nullable String statusMessage,
             boolean previewLoading,
             boolean tradeLoading
     ) {
         int color = 0xDDE6F9;
-        graphics.drawString(font, Component.translatable("screen.namanseulfarming.shop.quantity"), x, y, color, false);
+        int contentWidth = Math.max(0, width);
+        UiTextRender.drawEllipsized(
+                graphics,
+                font,
+                Component.translatable("screen.namanseulfarming.shop.quantity").getString(),
+                x,
+                y,
+                Math.max(0, contentWidth - 60),
+                color
+        );
         String state = null;
         int stateColor = 0xBFD0E8;
         if (quantityError != null && !quantityError.isBlank()) {
@@ -34,7 +45,7 @@ public final class ShopActionPanelView {
         }
 
         if (state != null) {
-            graphics.drawString(font, Component.literal(state), x + 56, y, stateColor, false);
+            UiTextRender.drawRightAligned(graphics, font, state, x + contentWidth, y, Math.max(0, contentWidth - 60), stateColor);
         }
     }
 }

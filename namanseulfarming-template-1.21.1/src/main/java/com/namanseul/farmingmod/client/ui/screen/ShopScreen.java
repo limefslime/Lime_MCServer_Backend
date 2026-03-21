@@ -188,6 +188,7 @@ public final class ShopScreen extends BaseGameScreen {
                         font,
                         actionX + 8,
                         actionY + 20,
+                        actionWidth - 16,
                         quantityError,
                         statusMessage,
                         previewLoading,

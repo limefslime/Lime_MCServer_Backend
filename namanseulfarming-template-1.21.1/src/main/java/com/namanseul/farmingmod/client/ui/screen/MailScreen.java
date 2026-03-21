@@ -151,7 +151,7 @@ public final class MailScreen extends BaseGameScreen {
         renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
         renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.mail.actions"), actionX + 6, actionY + 6);
         renderClipped(graphics, actionX, actionY, actionWidth, actionHeight, () ->
-                MailActionPanelView.render(graphics, font, actionX + 8, actionY + 34, statusMessage, claimLoading)
+                MailActionPanelView.render(graphics, font, actionX + 8, actionY + 34, actionWidth - 16, statusMessage, claimLoading)
         );
     }
 
