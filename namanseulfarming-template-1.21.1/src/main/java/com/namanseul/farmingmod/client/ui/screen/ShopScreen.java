@@ -408,18 +408,18 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestTrade(boolean buy) {
         if (selectedItem == null) {
-            showWarning(MSG_SELECT_ITEM);
+            showActionHint(MSG_SELECT_ITEM);
             return;
         }
 
         Integer quantity = validatedQuantity();
         if (quantity == null) {
-            showWarning(MSG_INVALID_QUANTITY);
+            showActionHint(MSG_INVALID_QUANTITY);
             return;
         }
 
         if (!hasMatchingPreview(buy ? "buy" : "sell", quantity)) {
-            showWarning(MSG_PREVIEW_PENDING);
+            showActionHint(MSG_PREVIEW_PENDING);
             return;
         }
 
@@ -434,12 +434,12 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestRegisterItem(InventoryChoice choice) {
         if (choice == null || choice.itemKey() == null || choice.itemKey().isBlank()) {
-            showWarning(MSG_INVALID_INVENTORY_ITEM);
+            showActionHint(MSG_INVALID_INVENTORY_ITEM);
             return;
         }
         Integer quantity = validatedQuantity();
         if (quantity == null) {
-            showWarning(MSG_INVALID_QUANTITY);
+            showActionHint(MSG_INVALID_QUANTITY);
             return;
         }
         if (listingActionLoading) {
@@ -460,7 +460,7 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestCancelSell() {
         if (selectedItem == null || !selectedItem.playerListed()) {
-            showWarning(MSG_SELECT_LISTED_ITEM);
+            showActionHint(MSG_SELECT_LISTED_ITEM);
             return;
         }
         if (listingActionLoading) {
@@ -519,7 +519,7 @@ public final class ShopScreen extends BaseGameScreen {
         setMainWidgetsVisible(false);
         inventoryPickerVisible = true;
         if (inventoryChoices.isEmpty()) {
-            showWarning("No items available in your inventory.");
+            showActionHint("No items available in your inventory.");
         }
         updateActionButtons();
     }
@@ -696,8 +696,7 @@ public final class ShopScreen extends BaseGameScreen {
             items.clear();
             selectedItem = null;
             clearPreviews();
-            setError("Could not load shop items.");
-            statusMessage = null;
+            showFailure("Could not load shop items.");
             updateListEntries();
             updateActionButtons();
             return;
@@ -717,8 +716,7 @@ public final class ShopScreen extends BaseGameScreen {
             selectedItem = null;
             clearPreviews();
             updateListEntries();
-            setError("Could not read shop items.");
-            statusMessage = null;
+            showFailure("Could not read shop items.");
         }
 
         updateActionButtons();
@@ -731,7 +729,7 @@ public final class ShopScreen extends BaseGameScreen {
         pendingDetailRequestId = null;
 
         if (!payload.success()) {
-            setError("Could not load selected item.");
+            showFailure("Could not load selected item.");
             return;
         }
 
@@ -743,7 +741,7 @@ public final class ShopScreen extends BaseGameScreen {
             updateSelectionByItemId(detail.itemId());
             setError(null);
         } catch (Exception ex) {
-            setError("Could not read selected item.");
+            showFailure("Could not read selected item.");
         }
     }
 
@@ -761,8 +759,7 @@ public final class ShopScreen extends BaseGameScreen {
         previewLoading = pendingPreviewBuyRequestId != null || pendingPreviewSellRequestId != null;
 
         if (!payload.success()) {
-            setError("Could not check price.");
-            statusMessage = null;
+            showFailure("Could not check price.");
             updateActionButtons();
             return;
         }
@@ -777,8 +774,7 @@ public final class ShopScreen extends BaseGameScreen {
             statusMessage = null;
             setError(null);
         } catch (Exception ex) {
-            setError("Could not read price quote.");
-            statusMessage = null;
+            showFailure("Could not read price quote.");
         }
         updateActionButtons();
     }
@@ -791,8 +787,7 @@ public final class ShopScreen extends BaseGameScreen {
         tradeLoading = false;
 
         if (!payload.success()) {
-            setError("Trade failed. Please try again.");
-            statusMessage = null;
+            showFailure("Trade failed. Please try again.");
             updateActionButtons();
             return;
         }
@@ -805,7 +800,7 @@ public final class ShopScreen extends BaseGameScreen {
             setError(null);
             requestItemList(true);
         } catch (Exception ex) {
-            setError("Trade completed, but confirmation could not be read.");
+            showFailure("Trade completed, but confirmation could not be read.");
         }
         updateActionButtons();
     }
@@ -827,8 +822,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = false;
         if (!payload.success()) {
-            setError("Could not update listing.");
-            statusMessage = null;
+            showFailure("Could not update listing.");
             updateActionButtons();
             return;
         }
@@ -898,7 +892,13 @@ public final class ShopScreen extends BaseGameScreen {
         items.add(item);
     }
 
-    private void showWarning(String message) {
+    private void showActionHint(String message) {
+        statusMessage = message;
+        setError(null);
+    }
+
+    private void showFailure(String message) {
+        statusMessage = null;
         setError(message);
     }
 
@@ -936,12 +936,14 @@ public final class ShopScreen extends BaseGameScreen {
             buyButton.active = hasItem
                     && validQuantity
                     && !busy
+                    && !previewLoading
                     && hasMatchingPreview("buy", quantity == null ? -1 : quantity);
         }
         if (sellButton != null) {
             sellButton.active = hasItem
                     && validQuantity
                     && !busy
+                    && !previewLoading
                     && hasMatchingPreview("sell", quantity == null ? -1 : quantity);
         }
         if (registerItemButton != null) {

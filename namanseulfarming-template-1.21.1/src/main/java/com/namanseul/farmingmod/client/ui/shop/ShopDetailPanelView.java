@@ -50,39 +50,43 @@ public final class ShopDetailPanelView {
 
         String itemName = (item.itemName() == null || item.itemName().isBlank()) ? item.itemId() : item.itemName();
         lines.add(Component.literal(itemName));
-        lines.add(Component.literal("Buy " + item.currentBuyPrice() + "  |  Sell " + item.currentSellPrice()));
-
-        int stock = Math.max(0, item.stockQuantity());
-        if (item.playerListed()) {
-            lines.add(Component.literal("Stock " + stock + "  |  Listed " + Math.max(1, item.listingQuantity())));
-            lines.add(Component.literal("You can cancel listing from the action buttons."));
-        } else {
-            lines.add(Component.literal("Stock " + stock));
-        }
-
-        if (previewLoading) {
-            lines.add(Component.literal("Updating quote..."));
-        }
+        lines.add(Component.literal("Price now: Buy " + item.currentBuyPrice() + " / Sell " + item.currentSellPrice()));
 
         if (buyPreview != null) {
             lines.add(Component.literal("Buy x" + buyPreview.quantity()
-                    + " -> " + buyPreview.netTotalPrice()
-                    + " (fee " + buyPreview.feeAmount() + ")"));
+                    + ": Pay " + buyPreview.netTotalPrice()
+                    + " (Fee " + buyPreview.feeAmount() + ")"));
             if (Boolean.FALSE.equals(buyPreview.canAfford())) {
-                lines.add(Component.literal("Not enough balance for this buy."));
+                lines.add(Component.literal("Cannot buy: balance is too low."));
             }
         }
 
         if (sellPreview != null) {
             lines.add(Component.literal("Sell x" + sellPreview.quantity()
-                    + " -> " + sellPreview.netTotalPrice()
-                    + " (fee " + sellPreview.feeAmount() + ")"));
+                    + ": Receive " + sellPreview.netTotalPrice()
+                    + " (Fee " + sellPreview.feeAmount() + ")"));
+        }
+
+        if (buyPreview == null && sellPreview == null) {
+            lines.add(Component.literal(previewLoading
+                    ? "Checking latest quote..."
+                    : "Adjust quantity to view expected result."));
+        }
+
+        int stock = Math.max(0, item.stockQuantity());
+        lines.add(Component.literal("Stock: " + stock));
+        if (item.playerListed()) {
+            lines.add(Component.literal("Listed by you: " + Math.max(1, item.listingQuantity())));
         }
 
         if (trade != null && item.itemId().equals(trade.itemId())) {
             String action = "buy".equalsIgnoreCase(trade.transactionType()) ? "Bought" : "Sold";
-            lines.add(Component.literal("Last trade: " + action + " x" + trade.quantity()
-                    + " for " + trade.netTotalPrice()));
+            lines.add(Component.literal("Recent trade: " + action + " x" + trade.quantity()
+                    + " (Net " + trade.netTotalPrice() + ")"));
+        }
+
+        if (item.playerListed()) {
+            lines.add(Component.literal("Use Cancel Sell to remove your listing."));
         }
 
         return lines;
