@@ -80,18 +80,26 @@ public final class UiClientNetworking {
         return send(UiScreenType.INVEST, UiAction.INVEST_REFRESH, payloadWithForceRefresh(true));
     }
 
-    public static String requestInvestDetail(String projectId, boolean forceRefresh) {
-        return send(UiScreenType.INVEST, UiAction.INVEST_DETAIL, payloadWithIdAndForceRefresh("projectId", projectId, forceRefresh));
+    public static String requestInvestDetail(String stockId, boolean forceRefresh) {
+        return send(UiScreenType.INVEST, UiAction.INVEST_DETAIL, payloadWithIdAndForceRefresh("stockId", stockId, forceRefresh));
     }
 
-    public static String requestInvestProgress(String projectId, boolean forceRefresh) {
-        return send(UiScreenType.INVEST, UiAction.INVEST_PROGRESS, payloadWithIdAndForceRefresh("projectId", projectId, forceRefresh));
+    public static String requestInvestProgress(String stockId, boolean forceRefresh) {
+        return send(UiScreenType.INVEST, UiAction.INVEST_PROGRESS, payloadWithIdAndForceRefresh("stockId", stockId, forceRefresh));
     }
 
-    public static String requestInvestContribute(String projectId, int amount) {
-        JsonObject payload = payloadWithId("projectId", projectId);
+    public static String requestInvestContribute(String stockId, int amount) {
+        JsonObject payload = payloadWithId("stockId", stockId);
         payload.addProperty("amount", amount);
         return send(UiScreenType.INVEST, UiAction.INVEST_CONTRIBUTE, payload);
+    }
+
+    public static String requestInvestBuy(String stockId, int quantity) {
+        return send(UiScreenType.INVEST, UiAction.INVEST_BUY, payloadWithIdAndQuantity("stockId", stockId, quantity));
+    }
+
+    public static String requestInvestSell(String stockId, int quantity) {
+        return send(UiScreenType.INVEST, UiAction.INVEST_SELL, payloadWithIdAndQuantity("stockId", stockId, quantity));
     }
 
     public static String requestStatusOverview(boolean forceRefresh) {

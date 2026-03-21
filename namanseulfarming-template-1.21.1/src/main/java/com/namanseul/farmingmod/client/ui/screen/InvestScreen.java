@@ -1,15 +1,13 @@
 package com.namanseul.farmingmod.client.ui.screen;
 
 import com.namanseul.farmingmod.client.network.UiClientNetworking;
-import com.namanseul.farmingmod.client.ui.invest.InvestActionPanelView;
-import com.namanseul.farmingmod.client.ui.invest.InvestInvestmentResultViewData;
-import com.namanseul.farmingmod.client.ui.invest.InvestDetailPanelView;
-import com.namanseul.farmingmod.client.ui.invest.InvestJsonParser;
-import com.namanseul.farmingmod.client.ui.invest.InvestProgressPanelView;
-import com.namanseul.farmingmod.client.ui.invest.InvestProjectListPanel;
-import com.namanseul.farmingmod.client.ui.invest.InvestProjectViewData;
+import com.namanseul.farmingmod.client.ui.invest.InvestStockDetailViewData;
+import com.namanseul.farmingmod.client.ui.invest.InvestStockJsonParser;
+import com.namanseul.farmingmod.client.ui.invest.InvestStockViewData;
+import com.namanseul.farmingmod.client.ui.invest.InvestTradeResultViewData;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
-import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
+import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import java.util.ArrayList;
@@ -23,24 +21,31 @@ import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 public final class InvestScreen extends BaseGameScreen {
+    private static final int DETAIL_LABEL_WIDTH = 72;
+    private static final int ACTION_LABEL_WIDTH = 58;
+
     private final Screen returnScreen;
-    private final List<InvestProjectViewData> projects = new ArrayList<>();
+    private final List<InvestStockViewData> stocks = new ArrayList<>();
 
-    private InvestProjectListPanel projectListPanel;
-    private InvestProjectViewData selectedProject;
-    private InvestInvestmentResultViewData lastInvestResult;
+    private UiListPanel stockListPanel;
+    private InvestStockViewData selectedStock;
 
-    private EditBox amountInput;
-    private Button investButton;
+    private EditBox quantityInput;
+    private Button buyButton;
+    private Button sellButton;
 
     private String pendingListRequestId;
     private String pendingDetailRequestId;
-    private String pendingProgressRequestId;
-    private String pendingInvestRequestId;
+    private String pendingBuyRequestId;
+    private String pendingSellRequestId;
 
     private boolean listLoading;
-    private boolean investLoading;
-    private String amountError;
+    private boolean detailLoading;
+    private boolean tradeLoading;
+    private boolean detailReady;
+    private int walletBalance;
+
+    private String inputError;
     private String statusMessage;
 
     private int frameX;
@@ -58,18 +63,18 @@ public final class InvestScreen extends BaseGameScreen {
     private int detailWidth;
     private int detailHeight;
 
-    private int progressX;
-    private int progressY;
-    private int progressWidth;
-    private int progressHeight;
-
     private int actionX;
     private int actionY;
     private int actionWidth;
     private int actionHeight;
 
+    private int listPanelX = Integer.MIN_VALUE;
+    private int listPanelY = Integer.MIN_VALUE;
+    private int listPanelWidth = Integer.MIN_VALUE;
+    private int listPanelHeight = Integer.MIN_VALUE;
+
     public InvestScreen(@Nullable Screen returnScreen) {
-        super(Component.translatable("screen.namanseulfarming.invest.title"));
+        super(Component.literal("Invest"));
         this.returnScreen = returnScreen;
     }
 
@@ -89,20 +94,20 @@ public final class InvestScreen extends BaseGameScreen {
     protected void init() {
         super.init();
         recalcLayout();
-
         initCommonButtons(frameX + frameWidth - 4, frameY + 8);
+        initRefreshButton(frameX + frameWidth - 4, frameY + 8);
         if (closeButton != null) {
-            closeButton.setMessage(Component.translatable("screen.namanseulfarming.invest.back"));
+            closeButton.setMessage(Component.literal("Back"));
         }
 
-        projectListPanel = new InvestProjectListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
+        ensureListPanel();
         initActionWidgets();
-        requestProjectList(false);
+        requestStockList(false);
     }
 
     @Override
     protected void onRefreshPressed() {
-        requestProjectList(true);
+        requestStockList(true);
     }
 
     @Override
@@ -115,9 +120,21 @@ public final class InvestScreen extends BaseGameScreen {
         minecraft.setScreen(new GameHubScreen());
     }
 
+    public void handleServerResponse(UiResponsePayload payload) {
+        switch (payload.action()) {
+            case INVEST_LIST, INVEST_REFRESH -> handleListResponse(payload);
+            case INVEST_DETAIL, INVEST_PROGRESS -> handleDetailResponse(payload);
+            case INVEST_BUY, INVEST_SELL, INVEST_CONTRIBUTE -> handleTradeResponse(payload);
+            default -> {
+                // ignore unrelated actions
+            }
+        }
+    }
+
     @Override
     protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         recalcLayout();
+        ensureListPanel();
         positionCommonButtons(frameX + frameWidth - 4, frameY + 8);
         layoutActionWidgets();
         updateActionButtons();
@@ -126,59 +143,24 @@ public final class InvestScreen extends BaseGameScreen {
         renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
 
         renderPanel(graphics, listX, listY, listWidth, listHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.invest.list"), listX + 6, listY + 6);
-        if (projectListPanel != null) {
-            projectListPanel.render(graphics, font, mouseX, mouseY);
+        renderSectionTitle(graphics, Component.literal("Stocks"), listX + 6, listY + 6);
+        if (stockListPanel != null) {
+            stockListPanel.render(graphics, font, mouseX, mouseY);
         }
 
         renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.invest.detail"), detailX + 6, detailY + 6);
-        renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () ->
-                InvestDetailPanelView.render(
-                        graphics,
-                        font,
-                        detailX + 2,
-                        detailY + 18,
-                        detailWidth - 4,
-                        detailHeight - 20,
-                        selectedProject
-                )
-        );
-
-        renderPanel(graphics, progressX, progressY, progressWidth, progressHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.invest.progress"), progressX + 6, progressY + 6);
-        renderClipped(graphics, progressX, progressY, progressWidth, progressHeight, () ->
-                InvestProgressPanelView.render(
-                        graphics,
-                        font,
-                        progressX + 2,
-                        progressY + 18,
-                        progressWidth - 4,
-                        progressHeight - 20,
-                        selectedProject,
-                        lastInvestResult
-                )
-        );
+        renderSectionTitle(graphics, Component.literal("Detail"), detailX + 6, detailY + 6);
+        renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () -> renderDetailPanel(graphics));
 
         renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.invest.actions"), actionX + 6, actionY + 6);
-        renderClipped(graphics, actionX, actionY, actionWidth, actionHeight, () ->
-                InvestActionPanelView.render(
-                        graphics,
-                        font,
-                        actionX + 8,
-                        actionY + 36,
-                        amountError,
-                        statusMessage,
-                        investLoading
-                )
-        );
+        renderSectionTitle(graphics, Component.literal("Trade"), actionX + 6, actionY + 6);
+        renderClipped(graphics, actionX, actionY, actionWidth, actionHeight, () -> renderActionPanel(graphics));
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (projectListPanel != null && projectListPanel.mouseClicked(mouseX, mouseY, button)) {
-            onSelectedIndexChanged();
+        if (stockListPanel != null && stockListPanel.mouseClicked(mouseX, mouseY, button)) {
+            onSelectedStockChanged();
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -186,135 +168,287 @@ public final class InvestScreen extends BaseGameScreen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (projectListPanel != null && projectListPanel.mouseScrolled(mouseX, mouseY, scrollY)) {
+        if (stockListPanel != null && stockListPanel.mouseScrolled(mouseX, mouseY, scrollY)) {
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
-    public void handleServerResponse(UiResponsePayload payload) {
-        switch (payload.action()) {
-            case INVEST_LIST, INVEST_REFRESH -> handleListResponse(payload);
-            case INVEST_DETAIL -> handleDetailResponse(payload);
-            case INVEST_PROGRESS -> handleProgressResponse(payload);
-            case INVEST_CONTRIBUTE -> handleInvestResponse(payload);
-            default -> {
-                // ignore unrelated actions
-            }
-        }
-    }
-
     private void initActionWidgets() {
-        amountInput = addRenderableWidget(new EditBox(
+        quantityInput = addRenderableWidget(new EditBox(
                 font,
                 0,
                 0,
                 80,
                 16,
-                Component.translatable("screen.namanseulfarming.invest.amount")
+                Component.literal("Quantity")
         ));
-        amountInput.setMaxLength(9);
-        amountInput.setFilter(value -> value.isEmpty() || value.matches("\\d{0,9}"));
-        amountInput.setValue("100");
-        amountInput.setResponder(value -> onAmountInputChanged());
+        quantityInput.setMaxLength(9);
+        quantityInput.setFilter(value -> value.isEmpty() || value.matches("\\d{0,9}"));
+        quantityInput.setValue("1");
+        quantityInput.setResponder(value -> onQuantityChanged());
 
-        investButton = addRenderableWidget(UiButton.create(
-                Component.translatable("screen.namanseulfarming.invest.invest_button"),
+        buyButton = addRenderableWidget(UiButton.create(
+                Component.literal("BUY"),
                 0,
                 0,
-                56,
+                70,
                 20,
-                button -> requestInvest()
+                button -> requestTrade(true)
         ));
+
+        sellButton = addRenderableWidget(UiButton.create(
+                Component.literal("SELL"),
+                0,
+                0,
+                70,
+                20,
+                button -> requestTrade(false)
+        ));
+
         layoutActionWidgets();
     }
 
-    private void requestProjectList(boolean forceRefresh) {
+    private void recalcLayout() {
+        frameWidth = Math.min(580, width - 20);
+        frameHeight = Math.min(360, height - 36);
+        frameX = (width - frameWidth) / 2;
+        frameY = (height - frameHeight) / 2;
+
+        int innerX = frameX + 10;
+        int innerY = frameY + 34;
+        int innerWidth = frameWidth - 20;
+        int innerHeight = frameHeight - 44;
+
+        listX = innerX;
+        listY = innerY;
+        listWidth = clampInt((innerWidth * 38) / 100, 150, 230);
+        listHeight = innerHeight;
+
+        detailX = listX + listWidth + 8;
+        detailY = innerY;
+        detailWidth = innerWidth - listWidth - 8;
+        detailHeight = clampInt((innerHeight * 62) / 100, 130, innerHeight - 90);
+
+        actionX = detailX;
+        actionY = detailY + detailHeight + 6;
+        actionWidth = detailWidth;
+        actionHeight = innerHeight - detailHeight - 6;
+    }
+
+    private void ensureListPanel() {
+        int nextX = listX + 4;
+        int nextY = listY + 18;
+        int nextWidth = listWidth - 8;
+        int nextHeight = listHeight - 22;
+
+        if (stockListPanel != null
+                && listPanelX == nextX
+                && listPanelY == nextY
+                && listPanelWidth == nextWidth
+                && listPanelHeight == nextHeight) {
+            return;
+        }
+
+        listPanelX = nextX;
+        listPanelY = nextY;
+        listPanelWidth = nextWidth;
+        listPanelHeight = nextHeight;
+        stockListPanel = new UiListPanel(nextX, nextY, nextWidth, nextHeight);
+        stockListPanel.setRowRenderer(this::renderStockListRow);
+        refreshListEntries();
+    }
+
+    private void layoutActionWidgets() {
+        if (quantityInput == null || buyButton == null || sellButton == null) {
+            return;
+        }
+
+        int inputX = actionX + 10;
+        int inputY = actionY + 20;
+        int inputWidth = Math.max(70, actionWidth - 20);
+        quantityInput.setPosition(inputX, inputY);
+        quantityInput.setWidth(inputWidth);
+
+        int buttonY = inputY + 24;
+        int gap = 6;
+        int buttonWidth = Math.max(52, (inputWidth - gap) / 2);
+        buyButton.setPosition(inputX, buttonY);
+        buyButton.setWidth(buttonWidth);
+        sellButton.setPosition(inputX + buttonWidth + gap, buttonY);
+        sellButton.setWidth(buttonWidth);
+    }
+
+    private void renderDetailPanel(GuiGraphics graphics) {
+        int contentX = detailX + 8;
+        int contentWidth = Math.max(0, detailWidth - 16);
+        int y = detailY + 22;
+
+        if (selectedStock == null) {
+            UiTextRender.drawEllipsized(graphics, font, "Select a stock.", contentX, y, contentWidth, 0xC7D7F1);
+            return;
+        }
+
+        UiTextRender.drawEllipsized(graphics, font, selectedStock.name(), contentX, y, contentWidth, 0xFFFFFF);
+        int dividerY = y + font.lineHeight + 2;
+        graphics.fill(contentX, dividerY, contentX + contentWidth, dividerY + 1, 0xAA5F769A);
+
+        y += 18;
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Current:",
+                formatAmount(selectedStock.currentPrice()),
+                contentX,
+                y,
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                0xEAF1FF
+        );
+        y += 13;
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Holding:",
+                formatAmount(selectedStock.holdingQuantity()),
+                contentX,
+                y,
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                0xEAF1FF
+        );
+        y += 13;
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Avg Buy:",
+                formatAmount(selectedStock.avgBuyPrice()),
+                contentX,
+                y,
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                0xEAF1FF
+        );
+        y += 17;
+
+        int pnlValue = selectedStock.unrealizedPnl();
+        String pnlText = (pnlValue >= 0 ? "+" : "-") + formatAmount(Math.abs(pnlValue));
+        int pnlColor = pnlValue > 0 ? 0x91F7A2 : pnlValue < 0 ? 0xF7A4A4 : 0xEAF1FF;
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "PnL:",
+                pnlText,
+                contentX,
+                y,
+                contentWidth,
+                DETAIL_LABEL_WIDTH,
+                0xC7D7F1,
+                pnlColor
+        );
+    }
+
+    private void renderActionPanel(GuiGraphics graphics) {
+        int contentX = actionX + 10;
+        int contentWidth = Math.max(0, actionWidth - 20);
+        int y = actionY + 50;
+
+        Integer quantity = validateQuantityInput();
+        String buyValue = "-";
+        String sellValue = "-";
+        String totalValue = "-";
+        String feeValue = null;
+        if (quantity != null && selectedStock != null) {
+            int feeAmount = estimateFeeAmount(quantity);
+            long buyTotal = estimateBuyTotal(quantity);
+            long sellTotal = estimateSellTotal(quantity);
+            buyValue = formatAmount(buyTotal);
+            sellValue = formatAmount(sellTotal);
+            totalValue = formatAmount(calculateTotalPrice(quantity));
+            if (feeAmount > 0) {
+                feeValue = formatAmount(feeAmount);
+            }
+        }
+
+        UiTextRender.drawLabelValue(graphics, font, "Buy:", buyValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        y += 12;
+        UiTextRender.drawLabelValue(graphics, font, "Sell:", sellValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        y += 16;
+        UiTextRender.drawLabelValue(graphics, font, "Total:", totalValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        if (feeValue != null) {
+            y += 12;
+            UiTextRender.drawLabelValue(graphics, font, "Fee:", feeValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        }
+        y += 12;
+        UiTextRender.drawLabelValue(
+                graphics,
+                font,
+                "Wallet:",
+                formatAmount(walletBalance),
+                contentX,
+                y,
+                contentWidth,
+                ACTION_LABEL_WIDTH,
+                0xC7D7F1,
+                0xDDE6F9
+        );
+
+        if (inputError != null && !inputError.isBlank()) {
+            y += 14;
+            UiTextRender.drawEllipsized(graphics, font, inputError, contentX, y, contentWidth, 0xFF8E8E);
+        }
+        if (statusMessage != null && !statusMessage.isBlank()) {
+            y += 14;
+            UiTextRender.drawEllipsized(graphics, font, statusMessage, contentX, y, contentWidth, 0xDDE6F9);
+        }
+    }
+
+    private void requestStockList(boolean forceRefresh) {
         listLoading = true;
-        setLoading(true, Component.translatable("screen.namanseulfarming.invest.loading_projects"));
+        detailReady = false;
+        setLoading(true, Component.literal("Loading stocks..."));
         setError(null);
-        statusMessage = null;
         pendingListRequestId = forceRefresh
                 ? UiClientNetworking.requestInvestRefresh()
                 : UiClientNetworking.requestInvestList(false);
         updateActionButtons();
     }
 
-    private void requestProjectDetail(String projectId, boolean forceRefresh) {
-        pendingDetailRequestId = UiClientNetworking.requestInvestDetail(projectId, forceRefresh);
-        pendingProgressRequestId = UiClientNetworking.requestInvestProgress(projectId, forceRefresh);
-    }
-
-    private void requestInvest() {
-        if (selectedProject == null) {
-            showWarning("select a project first");
-            return;
-        }
-        if (selectedProject.isCompleted()) {
-            showWarning("this project is already completed");
-            return;
-        }
-
-        Integer amount = validatedAmount();
-        if (amount == null) {
-            showWarning("amount must be a positive integer");
-            return;
-        }
-
-        if (investLoading) {
-            return;
-        }
-
-        investLoading = true;
-        setError(null);
-        statusMessage = null;
-        pendingInvestRequestId = UiClientNetworking.requestInvestContribute(selectedProject.projectId(), amount);
+    private void requestStockDetail(String stockId, boolean forceRefresh) {
+        detailLoading = true;
+        detailReady = false;
+        pendingDetailRequestId = UiClientNetworking.requestInvestDetail(stockId, forceRefresh);
         updateActionButtons();
     }
 
-    private void onSelectedIndexChanged() {
-        if (projectListPanel == null || projects.isEmpty()) {
-            selectedProject = null;
+    private void requestTrade(boolean buy) {
+        if (selectedStock == null || tradeLoading || listLoading || detailLoading || !detailReady) {
             return;
         }
 
-        int selectedIndex = Math.max(0, Math.min(projectListPanel.selectedIndex(), projects.size() - 1));
-        selectedProject = projects.get(selectedIndex);
-        statusMessage = null;
-        requestProjectDetail(selectedProject.projectId(), false);
+        Integer quantity = validateQuantityInput();
+        if (quantity == null) {
+            return;
+        }
+
+        if (buy && !canBuy(quantity)) {
+            return;
+        }
+        if (!buy && !canSell(quantity)) {
+            return;
+        }
+
+        tradeLoading = true;
+        inputError = null;
+        if (buy) {
+            pendingBuyRequestId = UiClientNetworking.requestInvestBuy(selectedStock.stockId(), quantity);
+        } else {
+            pendingSellRequestId = UiClientNetworking.requestInvestSell(selectedStock.stockId(), quantity);
+        }
         updateActionButtons();
-    }
-
-    private void onAmountInputChanged() {
-        validatedAmount();
-        updateActionButtons();
-    }
-
-    @Nullable
-    private Integer validatedAmount() {
-        if (amountInput == null) {
-            amountError = "amount input unavailable";
-            return null;
-        }
-
-        String raw = amountInput.getValue();
-        if (raw == null || raw.isBlank()) {
-            amountError = "enter amount";
-            return null;
-        }
-
-        try {
-            int amount = Integer.parseInt(raw);
-            if (amount <= 0) {
-                amountError = "amount must be >= 1";
-                return null;
-            }
-            amountError = null;
-            return amount;
-        } catch (NumberFormatException ex) {
-            amountError = "amount must be numeric";
-            return null;
-        }
     }
 
     private void handleListResponse(UiResponsePayload payload) {
@@ -326,33 +460,32 @@ public final class InvestScreen extends BaseGameScreen {
         setLoading(false);
 
         if (!payload.success()) {
-            projects.clear();
-            selectedProject = null;
-            setError(payload.error() == null ? "project list request failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.invest.banner.list_failed")));
-            updateListEntries();
+            String errorMessage = payload.error() != null && !payload.error().isBlank()
+                    ? payload.error()
+                    : "Failed to load stocks.";
+            setError(errorMessage);
+            stocks.clear();
+            selectedStock = null;
+            detailReady = false;
+            refreshListEntries();
             updateActionButtons();
             return;
         }
 
         try {
-            String previousProjectId = selectedProject == null ? null : selectedProject.projectId();
-            List<InvestProjectViewData> fetched = InvestJsonParser.parseProjects(payload.dataJson());
-            projects.clear();
-            projects.addAll(fetched);
+            String previousSelectedId = selectedStock == null ? null : selectedStock.stockId();
+            List<InvestStockViewData> parsed = InvestStockJsonParser.parseStockList(payload.dataJson());
+            stocks.clear();
+            stocks.addAll(parsed);
             setError(null);
-            updateListEntries();
-            restoreOrSelectFirst(previousProjectId);
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.invest.banner.list_loaded")));
+            refreshListEntries();
+            restoreSelection(previousSelectedId);
         } catch (Exception ex) {
-            projects.clear();
-            selectedProject = null;
-            updateListEntries();
-            setError("failed to parse invest list response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.invest.banner.list_failed")));
+            setError("Failed to load stocks.");
+            stocks.clear();
+            selectedStock = null;
+            detailReady = false;
+            refreshListEntries();
         }
 
         updateActionButtons();
@@ -363,249 +496,303 @@ public final class InvestScreen extends BaseGameScreen {
             return;
         }
         pendingDetailRequestId = null;
+        detailLoading = false;
 
         if (!payload.success()) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal(payload.error() == null ? "project detail request failed" : payload.error())));
-            return;
-        }
-
-        try {
-            InvestProjectViewData detail = InvestJsonParser.parseProjectDetail(payload.dataJson());
-            upsertProject(detail);
-            selectedProject = detail;
-            updateListEntries();
-            updateSelectionByProjectId(detail.projectId());
-        } catch (Exception ex) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal("failed to parse project detail")));
-        }
-    }
-
-    private void handleProgressResponse(UiResponsePayload payload) {
-        if (pendingProgressRequestId != null && !pendingProgressRequestId.equals(payload.requestId())) {
-            return;
-        }
-        pendingProgressRequestId = null;
-
-        if (!payload.success()) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal(payload.error() == null ? "project progress request failed" : payload.error())));
-            return;
-        }
-
-        if (selectedProject == null) {
-            return;
-        }
-
-        try {
-            InvestProjectViewData merged = InvestJsonParser.applyProgress(
-                    selectedProject.projectId(),
-                    selectedProject,
-                    payload.dataJson()
-            );
-            upsertProject(merged);
-            selectedProject = merged;
-            updateListEntries();
-            updateSelectionByProjectId(merged.projectId());
-        } catch (Exception ex) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal("failed to parse project progress")));
-        }
-    }
-
-    private void handleInvestResponse(UiResponsePayload payload) {
-        if (pendingInvestRequestId != null && !pendingInvestRequestId.equals(payload.requestId())) {
-            return;
-        }
-        pendingInvestRequestId = null;
-        investLoading = false;
-
-        if (!payload.success()) {
-            setError(payload.error() == null ? "invest failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Invest failed." : payload.error())));
+            detailReady = false;
+            String errorMessage = payload.error() != null && !payload.error().isBlank()
+                    ? payload.error()
+                    : "Failed to load stock.";
+            setError(errorMessage);
             updateActionButtons();
             return;
         }
 
         try {
-            InvestInvestmentResultViewData result = InvestJsonParser.parseInvestmentResult(payload.dataJson());
-            lastInvestResult = result;
-
-            if (selectedProject != null && selectedProject.projectId().equals(result.projectId())) {
-                InvestProjectViewData merged = InvestJsonParser.applyInvestmentResult(selectedProject, result);
-                upsertProject(merged);
-                selectedProject = merged;
-            }
-
-            String investedText = result.investedAmount() == null ? "-" : Integer.toString(result.investedAmount());
-            statusMessage = "invest success (+" + investedText + ")";
+            InvestStockDetailViewData detail = InvestStockJsonParser.parseStockDetail(payload.dataJson());
+            walletBalance = detail.walletBalance();
+            upsertStock(detail.stock());
+            selectedStock = detail.stock();
+            detailReady = true;
             setError(null);
-            setMessageBanner(new UiMessageBanner(
-                    UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.invest.banner.invest_success", investedText)
-            ));
-
-            requestProjectList(true);
-            if (result.projectId() != null && !result.projectId().isBlank()) {
-                requestProjectDetail(result.projectId(), true);
-            }
+            refreshListEntries();
+            updateSelectionByStockId(selectedStock.stockId());
         } catch (Exception ex) {
-            setError("failed to parse invest response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal("Failed to parse invest result")));
+            detailReady = false;
+            setError("Failed to load stock.");
         }
+
         updateActionButtons();
     }
 
-    private void updateListEntries() {
-        if (projectListPanel == null) {
+    private void handleTradeResponse(UiResponsePayload payload) {
+        boolean isBuyLike = payload.action() == UiAction.INVEST_BUY || payload.action() == UiAction.INVEST_CONTRIBUTE;
+        String expectedRequestId = isBuyLike ? pendingBuyRequestId : pendingSellRequestId;
+        if (expectedRequestId != null && !expectedRequestId.equals(payload.requestId())) {
             return;
         }
-        projectListPanel.setEntries(projects);
-        if (projects.isEmpty()) {
-            setEmpty(Component.translatable("screen.namanseulfarming.invest.no_projects"));
+
+        if (isBuyLike) {
+            pendingBuyRequestId = null;
         } else {
-            setEmpty(null);
+            pendingSellRequestId = null;
         }
+        tradeLoading = false;
+
+        if (!payload.success()) {
+            String tradeError = resolveTradeErrorMessage(isBuyLike, payload.error());
+            setError(tradeError);
+            statusMessage = tradeError;
+            updateActionButtons();
+            return;
+        }
+
+        try {
+            InvestTradeResultViewData result = InvestStockJsonParser.parseTradeResult(payload.dataJson());
+            walletBalance = result.walletBalanceAfter();
+            if (result.stock() != null) {
+                upsertStock(result.stock());
+                selectedStock = result.stock();
+                detailReady = true;
+                updateSelectionByStockId(result.stock().stockId());
+            }
+
+            String sideMessage = "sell".equalsIgnoreCase(result.side())
+                    ? "Sold " + result.quantity() + " shares"
+                    : "Bought " + result.quantity() + " shares";
+            statusMessage = sideMessage;
+            setError(null);
+
+            requestStockList(true);
+            if (selectedStock != null) {
+                requestStockDetail(selectedStock.stockId(), true);
+            }
+        } catch (Exception ex) {
+            String tradeError = resolveTradeErrorMessage(isBuyLike, null);
+            setError(tradeError);
+            statusMessage = tradeError;
+        }
+
+        updateActionButtons();
     }
 
-    private void restoreOrSelectFirst(@Nullable String previousProjectId) {
-        if (projectListPanel == null || projects.isEmpty()) {
-            selectedProject = null;
+    private void onSelectedStockChanged() {
+        if (stockListPanel == null || stocks.isEmpty()) {
+            selectedStock = null;
+            detailReady = false;
+            updateActionButtons();
+            return;
+        }
+        int selectedIndex = Math.max(0, Math.min(stockListPanel.selectedIndex(), stocks.size() - 1));
+        selectedStock = stocks.get(selectedIndex);
+        requestStockDetail(selectedStock.stockId(), false);
+        updateActionButtons();
+    }
+
+    private void restoreSelection(@Nullable String stockId) {
+        if (stockListPanel == null || stocks.isEmpty()) {
+            selectedStock = null;
+            detailReady = false;
+            setEmpty(Component.literal("No stocks available."));
             return;
         }
 
+        setEmpty(null);
         int selectedIndex = 0;
-        if (previousProjectId != null) {
-            for (int i = 0; i < projects.size(); i++) {
-                if (previousProjectId.equals(projects.get(i).projectId())) {
+        if (stockId != null) {
+            for (int i = 0; i < stocks.size(); i++) {
+                if (stockId.equals(stocks.get(i).stockId())) {
                     selectedIndex = i;
                     break;
                 }
             }
         }
 
-        projectListPanel.setSelectedIndex(selectedIndex);
-        selectedProject = projects.get(selectedIndex);
-        requestProjectDetail(selectedProject.projectId(), false);
+        stockListPanel.setSelectedIndex(selectedIndex);
+        selectedStock = stocks.get(selectedIndex);
+        requestStockDetail(selectedStock.stockId(), false);
     }
 
-    private void updateSelectionByProjectId(String projectId) {
-        if (projectListPanel == null || projectId == null) {
+    private void updateSelectionByStockId(String stockId) {
+        if (stockListPanel == null || stockId == null) {
             return;
         }
-        for (int i = 0; i < projects.size(); i++) {
-            if (projectId.equals(projects.get(i).projectId())) {
-                projectListPanel.setSelectedIndex(i);
+        for (int i = 0; i < stocks.size(); i++) {
+            if (stockId.equals(stocks.get(i).stockId())) {
+                stockListPanel.setSelectedIndex(i);
                 return;
             }
         }
     }
 
-    private void upsertProject(InvestProjectViewData project) {
-        for (int i = 0; i < projects.size(); i++) {
-            if (projects.get(i).projectId().equals(project.projectId())) {
-                projects.set(i, project);
+    private void refreshListEntries() {
+        if (stockListPanel == null) {
+            return;
+        }
+        List<Component> entries = new ArrayList<>();
+        for (InvestStockViewData stock : stocks) {
+            entries.add(Component.literal(stock.stockId() == null ? "" : stock.stockId()));
+        }
+        stockListPanel.setEntries(entries);
+    }
+
+    private void upsertStock(InvestStockViewData updated) {
+        for (int i = 0; i < stocks.size(); i++) {
+            if (stocks.get(i).stockId().equals(updated.stockId())) {
+                stocks.set(i, updated);
                 return;
             }
         }
-        projects.add(project);
+        stocks.add(updated);
     }
 
-    private void showWarning(String message) {
-        setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING, Component.literal(message)));
+    private void onQuantityChanged() {
+        validateQuantityInput();
+        updateActionButtons();
+    }
+
+    @Nullable
+    private Integer validateQuantityInput() {
+        if (quantityInput == null) {
+            inputError = null;
+            return null;
+        }
+
+        String raw = quantityInput.getValue();
+        if (raw == null || raw.isBlank()) {
+            inputError = null;
+            return null;
+        }
+
+        try {
+            int quantity = Integer.parseInt(raw);
+            if (quantity <= 0) {
+                inputError = "Quantity must be greater than 0.";
+                return null;
+            }
+            inputError = null;
+            return quantity;
+        } catch (NumberFormatException ex) {
+            inputError = "Quantity must be numeric.";
+            return null;
+        }
+    }
+
+    private long calculateTotalPrice(@Nullable Integer quantity) {
+        if (quantity == null || selectedStock == null) {
+            return 0L;
+        }
+        return (long) quantity * Math.max(0, selectedStock.currentPrice());
+    }
+
+    private int estimateFeeAmount(@Nullable Integer quantity) {
+        return quantity == null || quantity <= 0 ? 0 : 0;
+    }
+
+    private long estimateBuyTotal(int quantity) {
+        return calculateTotalPrice(quantity) + estimateFeeAmount(quantity);
+    }
+
+    private long estimateSellTotal(int quantity) {
+        return Math.max(0L, calculateTotalPrice(quantity) - estimateFeeAmount(quantity));
+    }
+
+    private String resolveTradeErrorMessage(boolean isBuyLike, @Nullable String rawError) {
+        if (rawError != null && !rawError.isBlank()) {
+            return rawError;
+        }
+        String normalized = rawError == null ? "" : rawError.toLowerCase();
+        if (normalized.contains("balance")) {
+            return "Not enough balance";
+        }
+        if (normalized.contains("quantity") || normalized.contains("share") || normalized.contains("holding")) {
+            return "Not enough shares";
+        }
+        return isBuyLike ? "Not enough balance" : "Not enough shares";
+    }
+
+    private String formatAmount(long value) {
+        return String.format("%,d", value);
+    }
+
+    private boolean canBuy(int quantity) {
+        if (selectedStock == null || quantity <= 0 || !detailReady) {
+            return false;
+        }
+        int price = selectedStock.currentPrice();
+        if (price <= 0) {
+            return false;
+        }
+        long totalPrice = estimateBuyTotal(quantity);
+        return totalPrice <= walletBalance;
+    }
+
+    private boolean canSell(int quantity) {
+        if (selectedStock == null || quantity <= 0 || !detailReady) {
+            return false;
+        }
+        return selectedStock.holdingQuantity() >= quantity;
+    }
+
+    private void renderStockListRow(
+            GuiGraphics graphics,
+            net.minecraft.client.gui.Font listFont,
+            int rowIndex,
+            Component entry,
+            int rowX,
+            int rowY,
+            int rowWidth,
+            int rowHeight,
+            boolean selected
+    ) {
+        if (rowIndex < 0 || rowIndex >= stocks.size()) {
+            UiTextRender.drawEllipsized(graphics, listFont, entry.getString(), rowX, rowY, rowWidth, 0xFFFFFF);
+            return;
+        }
+
+        InvestStockViewData stock = stocks.get(rowIndex);
+        int gap = 6;
+        int changeWidth = Math.max(44, Math.min(84, rowWidth / 4));
+        int priceWidth = Math.max(54, Math.min(96, rowWidth / 3));
+        int nameWidth = Math.max(28, rowWidth - changeWidth - priceWidth - gap * 2);
+
+        int nameX = rowX;
+        int priceRight = rowX + nameWidth + gap + priceWidth;
+        int changeRight = rowX + rowWidth;
+
+        String priceText = formatAmount(stock.currentPrice());
+        String changeText;
+        if (stock.changeAmount() > 0) {
+            changeText = "+" + formatAmount(stock.changeAmount());
+        } else if (stock.changeAmount() < 0) {
+            changeText = "-" + formatAmount(Math.abs(stock.changeAmount()));
+        } else {
+            changeText = "0";
+        }
+        int changeColor = stock.changeAmount() > 0 ? 0x91F7A2 : stock.changeAmount() < 0 ? 0xF7A4A4 : 0xC7D7F1;
+
+        UiTextRender.drawEllipsized(graphics, listFont, stock.name(), nameX, rowY, nameWidth, 0xFFFFFF);
+        UiTextRender.drawRightAligned(graphics, listFont, priceText, priceRight, rowY, priceWidth, 0xE8F0FF);
+        UiTextRender.drawRightAligned(graphics, listFont, changeText, changeRight, rowY, changeWidth, changeColor);
     }
 
     private void updateActionButtons() {
-        boolean busy = listLoading || investLoading;
-        boolean hasProject = selectedProject != null;
-        boolean validAmount = validatedAmount() != null;
-        boolean completed = selectedProject != null && selectedProject.isCompleted();
+        boolean busy = listLoading || detailLoading || tradeLoading;
+        Integer quantity = validateQuantityInput();
+        boolean buyEnabled = !busy && quantity != null && canBuy(quantity);
+        boolean sellEnabled = !busy && quantity != null && canSell(quantity);
 
-        if (investButton != null) {
-            investButton.active = hasProject && validAmount && !busy && !completed;
+        if (buyButton != null) {
+            buyButton.active = buyEnabled;
+        }
+        if (sellButton != null) {
+            sellButton.active = sellEnabled;
         }
         if (refreshButton != null) {
             refreshButton.active = !busy;
         }
         if (closeButton != null) {
-            closeButton.active = !investLoading;
-        }
-    }
-
-    private void layoutActionWidgets() {
-        if (amountInput == null || investButton == null) {
-            return;
-        }
-        int buttonX = actionX + 8;
-        int buttonY = actionY + 16;
-        int buttonWidth = Math.max(46, Math.min(78, actionWidth / 3));
-        int inputX = buttonX + buttonWidth + 6;
-        int inputWidth = Math.max(38, actionX + actionWidth - 8 - inputX);
-
-        investButton.setPosition(buttonX, buttonY);
-        investButton.setWidth(buttonWidth);
-        amountInput.setPosition(inputX, buttonY + 2);
-        amountInput.setWidth(inputWidth);
-    }
-
-    private void recalcLayout() {
-        frameWidth = Math.min(560, width - 20);
-        frameHeight = Math.min(360, height - 36);
-        frameX = (width - frameWidth) / 2;
-        frameY = (height - frameHeight) / 2;
-
-        int innerWidth = frameWidth - 20;
-        int minRightWidth = 170;
-        int preferredListWidth = clampInt(innerWidth * 38 / 100, 118, 210);
-        if (innerWidth - preferredListWidth - 8 < minRightWidth) {
-            preferredListWidth = Math.max(96, innerWidth - minRightWidth - 8);
-        }
-
-        listX = frameX + 10;
-        listY = frameY + 34;
-        listWidth = Math.max(96, preferredListWidth);
-        detailWidth = Math.max(96, innerWidth - listWidth - 8);
-
-        int contentTop = listY;
-        int contentBottom = frameY + frameHeight - 10;
-        int rightAvailableHeight = Math.max(120, contentBottom - contentTop);
-        listHeight = Math.max(64, rightAvailableHeight);
-
-        detailX = listX + listWidth + 8;
-        detailY = contentTop;
-
-        actionWidth = detailWidth;
-        progressWidth = detailWidth;
-
-        int gap = 6;
-        int minDetail = 52;
-        int minProgress = 48;
-        int minAction = 64;
-        actionHeight = clampInt(rightAvailableHeight / 3, minAction, 84);
-        progressHeight = clampInt(rightAvailableHeight / 3, minProgress, 104);
-        int detailCandidate = rightAvailableHeight - actionHeight - progressHeight - gap * 2;
-        if (detailCandidate < minDetail) {
-            int deficit = minDetail - detailCandidate;
-            int reduceProgress = Math.min(deficit, progressHeight - minProgress);
-            progressHeight -= reduceProgress;
-            deficit -= reduceProgress;
-
-            int reduceAction = Math.min(deficit, actionHeight - minAction);
-            actionHeight -= reduceAction;
-            deficit -= reduceAction;
-        }
-        detailHeight = Math.max(40, rightAvailableHeight - actionHeight - progressHeight - gap * 2);
-
-        progressX = detailX;
-        progressY = detailY + detailHeight + gap;
-
-        actionX = detailX;
-        actionY = progressY + progressHeight + gap;
-        if (actionY + actionHeight > contentBottom) {
-            actionHeight = Math.max(48, contentBottom - actionY);
+            closeButton.active = !tradeLoading;
         }
     }
 }

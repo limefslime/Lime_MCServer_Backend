@@ -9,12 +9,10 @@ import com.namanseul.farmingmod.client.ui.shop.ShopDetailPanelView;
 import com.namanseul.farmingmod.client.ui.shop.ShopItemViewData;
 import com.namanseul.farmingmod.client.ui.shop.ShopJsonParser;
 import com.namanseul.farmingmod.client.ui.shop.ShopItemListPanel;
-import com.namanseul.farmingmod.client.ui.shop.ShopPreviewPanelView;
 import com.namanseul.farmingmod.client.ui.shop.ShopPreviewViewData;
 import com.namanseul.farmingmod.client.ui.shop.ShopTradeViewData;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
-import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import java.util.ArrayList;
@@ -31,6 +29,12 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 public final class ShopScreen extends BaseGameScreen {
+    private static final String MSG_SELECT_ITEM = "Select an item first.";
+    private static final String MSG_INVALID_QUANTITY = "Enter a quantity of 1 or more.";
+    private static final String MSG_PREVIEW_PENDING = "Price check is in progress.";
+    private static final String MSG_SELECT_LISTED_ITEM = "Select your listed item first.";
+    private static final String MSG_INVALID_INVENTORY_ITEM = "Could not read the selected inventory item.";
+
     private final Screen returnScreen;
     private final List<ShopItemViewData> items = new ArrayList<>();
     private final List<InventoryChoice> inventoryChoices = new ArrayList<>();
@@ -84,11 +88,6 @@ public final class ShopScreen extends BaseGameScreen {
     private int detailY;
     private int detailWidth;
     private int detailHeight;
-
-    private int previewX;
-    private int previewY;
-    private int previewWidth;
-    private int previewHeight;
 
     private int actionX;
     private int actionY;
@@ -164,23 +163,19 @@ public final class ShopScreen extends BaseGameScreen {
         }
 
         renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.shop.detail"), detailX + 6, detailY + 6);
+        renderSectionTitle(graphics, Component.literal("Trade"), detailX + 6, detailY + 6);
         renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () ->
-                ShopDetailPanelView.render(graphics, font, detailX + 2, detailY + 18, detailWidth - 4, detailHeight - 20, selectedItem)
-        );
-
-        renderPanel(graphics, previewX, previewY, previewWidth, previewHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.shop.preview"), previewX + 6, previewY + 6);
-        renderClipped(graphics, previewX, previewY, previewWidth, previewHeight, () ->
-                ShopPreviewPanelView.render(
+                ShopDetailPanelView.render(
                         graphics,
                         font,
-                        previewX + 2,
-                        previewY + 18,
-                        previewWidth - 4,
-                        previewHeight - 20,
+                        detailX + 2,
+                        detailY + 18,
+                        detailWidth - 4,
+                        detailHeight - 20,
+                        selectedItem,
                         buyPreview,
                         sellPreview,
+                        previewLoading,
                         lastTrade
                 )
         );
@@ -193,6 +188,7 @@ public final class ShopScreen extends BaseGameScreen {
                         font,
                         actionX + 8,
                         actionY + 20,
+                        actionWidth - 16,
                         quantityError,
                         statusMessage,
                         previewLoading,
@@ -404,7 +400,7 @@ public final class ShopScreen extends BaseGameScreen {
         }
 
         setError(null);
-        statusMessage = "loading buy/sell preview...";
+        statusMessage = null;
         pendingPreviewBuyRequestId = UiClientNetworking.requestShopPreviewBuy(selectedItem.itemId(), quantity);
         pendingPreviewSellRequestId = UiClientNetworking.requestShopPreviewSell(selectedItem.itemId(), quantity);
         previewLoading = true;
@@ -413,18 +409,18 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestTrade(boolean buy) {
         if (selectedItem == null) {
-            showWarning("select an item first");
+            showActionHint(MSG_SELECT_ITEM);
             return;
         }
 
         Integer quantity = validatedQuantity();
         if (quantity == null) {
-            showWarning("quantity must be a positive integer");
+            showActionHint(MSG_INVALID_QUANTITY);
             return;
         }
 
         if (!hasMatchingPreview(buy ? "buy" : "sell", quantity)) {
-            showWarning(previewLoading ? "preview is loading..." : "preview is not ready yet");
+            showActionHint(MSG_PREVIEW_PENDING);
             return;
         }
 
@@ -439,12 +435,12 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestRegisterItem(InventoryChoice choice) {
         if (choice == null || choice.itemKey() == null || choice.itemKey().isBlank()) {
-            showWarning("invalid inventory item");
+            showActionHint(MSG_INVALID_INVENTORY_ITEM);
             return;
         }
         Integer quantity = validatedQuantity();
         if (quantity == null) {
-            showWarning("quantity must be a positive integer");
+            showActionHint(MSG_INVALID_QUANTITY);
             return;
         }
         if (listingActionLoading) {
@@ -453,7 +449,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = true;
         setError(null);
-        statusMessage = "registering item...";
+        statusMessage = "Registering item...";
         pendingRegisterRequestId = UiClientNetworking.requestShopRegister(
                 choice.itemKey(),
                 choice.stack().getDisplayName().getString(),
@@ -465,7 +461,7 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestCancelSell() {
         if (selectedItem == null || !selectedItem.playerListed()) {
-            showWarning("select a registered item first");
+            showActionHint(MSG_SELECT_LISTED_ITEM);
             return;
         }
         if (listingActionLoading) {
@@ -474,7 +470,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = true;
         setError(null);
-        statusMessage = "canceling listing...";
+        statusMessage = "Canceling listing...";
         pendingCancelSellRequestId = UiClientNetworking.requestShopCancelSell(selectedItem.itemId());
         updateActionButtons();
     }
@@ -524,7 +520,7 @@ public final class ShopScreen extends BaseGameScreen {
         setMainWidgetsVisible(false);
         inventoryPickerVisible = true;
         if (inventoryChoices.isEmpty()) {
-            showWarning("inventory has no items");
+            showActionHint("No items available in your inventory.");
         }
         updateActionButtons();
     }
@@ -648,26 +644,26 @@ public final class ShopScreen extends BaseGameScreen {
     @Nullable
     private Integer validatedQuantity() {
         if (quantityInput == null) {
-            quantityError = "quantity input is unavailable";
+            quantityError = "Quantity input is unavailable.";
             return null;
         }
 
         String raw = quantityInput.getValue();
         if (raw == null || raw.isBlank()) {
-            quantityError = "enter quantity";
+            quantityError = "Enter quantity.";
             return null;
         }
 
         try {
             int quantity = Integer.parseInt(raw);
             if (quantity <= 0) {
-                quantityError = "quantity must be >= 1";
+                quantityError = "Quantity must be 1 or more.";
                 return null;
             }
             quantityError = null;
             return quantity;
         } catch (NumberFormatException ex) {
-            quantityError = "quantity must be numeric";
+            quantityError = "Quantity must be a number.";
             return null;
         }
     }
@@ -701,9 +697,7 @@ public final class ShopScreen extends BaseGameScreen {
             items.clear();
             selectedItem = null;
             clearPreviews();
-            setError(payload.error() == null ? "shop list request failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.shop.banner.list_failed")));
+            showFailure("Could not load shop items.");
             updateListEntries();
             updateActionButtons();
             return;
@@ -715,18 +709,15 @@ public final class ShopScreen extends BaseGameScreen {
             items.clear();
             items.addAll(fetchedItems);
             setError(null);
+            statusMessage = null;
             updateListEntries();
             restoreOrSelectFirst(previousItemId);
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.shop.banner.list_loaded")));
         } catch (Exception ex) {
             items.clear();
             selectedItem = null;
             clearPreviews();
             updateListEntries();
-            setError("failed to parse shop list response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.shop.banner.list_failed")));
+            showFailure("Could not read shop items.");
         }
 
         updateActionButtons();
@@ -739,8 +730,7 @@ public final class ShopScreen extends BaseGameScreen {
         pendingDetailRequestId = null;
 
         if (!payload.success()) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal(payload.error() == null ? "item detail request failed" : payload.error())));
+            showFailure("Could not load selected item.");
             return;
         }
 
@@ -750,9 +740,9 @@ public final class ShopScreen extends BaseGameScreen {
             selectedItem = detail;
             updateListEntries();
             updateSelectionByItemId(detail.itemId());
+            setError(null);
         } catch (Exception ex) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal("failed to parse item detail")));
+            showFailure("Could not read selected item.");
         }
     }
 
@@ -770,9 +760,7 @@ public final class ShopScreen extends BaseGameScreen {
         previewLoading = pendingPreviewBuyRequestId != null || pendingPreviewSellRequestId != null;
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "preview failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Preview failed." : payload.error())));
+            showFailure("Could not check price.");
             updateActionButtons();
             return;
         }
@@ -784,16 +772,10 @@ public final class ShopScreen extends BaseGameScreen {
             } else {
                 sellPreview = preview;
             }
-            statusMessage = previewLoading ? "loading buy/sell preview..." : "preview ready";
+            statusMessage = null;
             setError(null);
-            if (!previewLoading) {
-                setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                        Component.translatable("screen.namanseulfarming.shop.banner.preview_ready")));
-            }
         } catch (Exception ex) {
-            setError("failed to parse preview response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal("Failed to parse preview result")));
+            showFailure("Could not read price quote.");
         }
         updateActionButtons();
     }
@@ -806,9 +788,7 @@ public final class ShopScreen extends BaseGameScreen {
         tradeLoading = false;
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "trade failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Trade failed." : payload.error())));
+            showFailure("Trade failed. Please try again.");
             updateActionButtons();
             return;
         }
@@ -817,15 +797,11 @@ public final class ShopScreen extends BaseGameScreen {
 
         try {
             lastTrade = ShopJsonParser.parseTrade(payload.dataJson(), transactionType);
-            statusMessage = transactionType + " success";
+            statusMessage = "buy".equals(transactionType) ? "Purchase completed." : "Sale completed.";
             setError(null);
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.shop.banner.trade_success", transactionType)));
             requestItemList(true);
         } catch (Exception ex) {
-            setError("failed to parse trade response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal("Failed to parse trade result")));
+            showFailure("Trade completed, but confirmation could not be read.");
         }
         updateActionButtons();
     }
@@ -847,22 +823,16 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = false;
         if (!payload.success()) {
-            setError(payload.error() == null ? "listing action failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Listing action failed." : payload.error())));
+            showFailure("Could not update listing.");
             updateActionButtons();
             return;
         }
 
         if (payload.action() == UiAction.SHOP_REGISTER) {
-            statusMessage = "item registered to sell list";
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.literal("Item registered. Inventory quantity reduced.")));
+            statusMessage = "Item listed for sale.";
             tryApplyListingFromActionResponse(payload.dataJson());
         } else {
-            statusMessage = "listing canceled (item sent to mail)";
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.literal("Sell canceled. Item was sent to your mail.")));
+            statusMessage = "Listing canceled.";
         }
         requestItemList(true);
         updateActionButtons();
@@ -923,8 +893,14 @@ public final class ShopScreen extends BaseGameScreen {
         items.add(item);
     }
 
-    private void showWarning(String message) {
-        setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING, Component.literal(message)));
+    private void showActionHint(String message) {
+        statusMessage = message;
+        setError(null);
+    }
+
+    private void showFailure(String message) {
+        statusMessage = null;
+        setError(message);
     }
 
     private void tryApplyListingFromActionResponse(@Nullable String dataJson) {
@@ -955,18 +931,20 @@ public final class ShopScreen extends BaseGameScreen {
         boolean hasItem = selectedItem != null;
         boolean validQuantity = quantity != null;
         boolean playerListedItem = selectedItem != null && selectedItem.playerListed();
-        boolean busy = listLoading || previewLoading || tradeLoading || listingActionLoading || inventoryPickerVisible;
+        boolean busy = listLoading || tradeLoading || listingActionLoading || inventoryPickerVisible;
 
         if (buyButton != null) {
             buyButton.active = hasItem
                     && validQuantity
                     && !busy
+                    && !previewLoading
                     && hasMatchingPreview("buy", quantity == null ? -1 : quantity);
         }
         if (sellButton != null) {
             sellButton.active = hasItem
                     && validQuantity
                     && !busy
+                    && !previewLoading
                     && hasMatchingPreview("sell", quantity == null ? -1 : quantity);
         }
         if (registerItemButton != null) {
@@ -1085,32 +1063,14 @@ public final class ShopScreen extends BaseGameScreen {
         detailX = listX + listWidth + 8;
         detailY = contentTop;
         actionWidth = detailWidth;
-        previewWidth = detailWidth;
 
         int gap = 6;
-        int minDetail = 52;
-        int minPreview = 48;
-        int minAction = 64;
-        actionHeight = clampInt(rightAvailableHeight / 3, minAction, 92);
-        previewHeight = clampInt(rightAvailableHeight / 3, minPreview, 86);
-        int detailCandidate = rightAvailableHeight - actionHeight - previewHeight - gap * 2;
-        if (detailCandidate < minDetail) {
-            int deficit = minDetail - detailCandidate;
-            int reducePreview = Math.min(deficit, previewHeight - minPreview);
-            previewHeight -= reducePreview;
-            deficit -= reducePreview;
-
-            int reduceAction = Math.min(deficit, actionHeight - minAction);
-            actionHeight -= reduceAction;
-            deficit -= reduceAction;
-        }
-        detailHeight = Math.max(40, rightAvailableHeight - actionHeight - previewHeight - gap * 2);
-
-        previewX = detailX;
-        previewY = detailY + detailHeight + gap;
+        int minAction = 76;
+        actionHeight = clampInt(rightAvailableHeight / 3, minAction, 98);
+        detailHeight = Math.max(68, rightAvailableHeight - actionHeight - gap);
 
         actionX = detailX;
-        actionY = previewY + previewHeight + gap;
+        actionY = detailY + detailHeight + gap;
         if (actionY + actionHeight > contentBottom) {
             actionHeight = Math.max(48, contentBottom - actionY);
         }

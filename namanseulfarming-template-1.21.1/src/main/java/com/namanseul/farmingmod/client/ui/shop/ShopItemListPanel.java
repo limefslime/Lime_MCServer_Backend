@@ -1,5 +1,6 @@
 package com.namanseul.farmingmod.client.ui.shop;
 
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -102,20 +103,21 @@ public final class ShopItemListPanel {
             String name = item.itemName() == null || item.itemName().isBlank() ? item.itemId() : item.itemName();
             int stock = Math.max(0, item.stockQuantity());
             if (item.playerListed()) {
-                name = "[L" + Math.max(1, item.listingQuantity()) + "/S" + stock + "] " + name;
+                name = name + " (listed " + Math.max(1, item.listingQuantity()) + ", stock " + stock + ")";
             } else {
-                name = "[S" + stock + "] " + name;
+                name = name + " (stock " + stock + ")";
             }
-            int itemColumnEnd = x + width - 86;
-            String clippedName = clipToWidth(font, name, Math.max(24, itemColumnEnd - (x + 24)));
-            graphics.drawString(font, clippedName, x + 24, textY, 0xFFFFFF, false);
+            int sellRight = x + width - 8;
+            int sellWidth = 34;
+            int buyRight = sellRight - sellWidth - 6;
+            int buyWidth = 34;
+            int itemColumnEnd = buyRight - buyWidth - 8;
+            UiTextRender.drawEllipsized(graphics, font, name, x + 24, textY, Math.max(24, itemColumnEnd - (x + 24)), 0xFFFFFF);
 
             String buyText = Integer.toString(item.currentBuyPrice());
             String sellText = Integer.toString(item.currentSellPrice());
-            int buyRight = x + width - 46;
-            int sellRight = x + width - 8;
-            graphics.drawString(font, buyText, buyRight - font.width(buyText), textY, 0xE8F0FF, false);
-            graphics.drawString(font, sellText, sellRight - font.width(sellText), textY, 0xE8F0FF, false);
+            UiTextRender.drawRightAligned(graphics, font, buyText, buyRight, textY, buyWidth, 0xE8F0FF);
+            UiTextRender.drawRightAligned(graphics, font, sellText, sellRight, textY, sellWidth, 0xE8F0FF);
         }
 
         graphics.disableScissor();
@@ -124,8 +126,8 @@ public final class ShopItemListPanel {
     private void renderHeader(GuiGraphics graphics, Font font) {
         int color = 0xD7E4FF;
         graphics.drawString(font, Component.literal("Item"), x + 6, y + 3, color, false);
-        graphics.drawString(font, Component.literal("Buy"), x + width - 70, y + 3, color, false);
-        graphics.drawString(font, Component.literal("Sell"), x + width - 34, y + 3, color, false);
+        UiTextRender.drawRightAligned(graphics, font, "Buy", x + width - 48, y + 3, 34, color);
+        UiTextRender.drawRightAligned(graphics, font, "Sell", x + width - 8, y + 3, 34, color);
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -168,31 +170,6 @@ public final class ShopItemListPanel {
 
     private boolean contains(double mouseX, double mouseY) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
-    }
-
-    private static String clipToWidth(Font font, String value, int maxWidth) {
-        if (value == null) {
-            return "";
-        }
-        if (font.width(value) <= maxWidth) {
-            return value;
-        }
-
-        String ellipsis = "...";
-        int ellipsisWidth = font.width(ellipsis);
-        if (ellipsisWidth >= maxWidth) {
-            return "";
-        }
-
-        int length = value.length();
-        while (length > 0) {
-            String candidate = value.substring(0, length);
-            if (font.width(candidate) + ellipsisWidth <= maxWidth) {
-                return candidate + ellipsis;
-            }
-            length--;
-        }
-        return "";
     }
 
     private static ItemStack resolveIconStack(String itemId) {
