@@ -13,6 +13,7 @@ import {
   stopShopStockReplenisher,
 } from "./modules/shop/shopReplenisher.service.js";
 import shopRoutes from "./modules/shop/shop.routes.js";
+import villageRoutes from "./modules/village/village.routes.js";
 import walletRoutes from "./modules/wallet/wallet.routes.js";
 
 const app = express();
@@ -31,6 +32,7 @@ app.use("/events", eventRoutes);
 app.use("/focus", focusRoutes);
 app.use("/regions", regionRoutes);
 app.use("/invest", investRoutes);
+app.use("/village", villageRoutes);
 app.use("/mail", mailRoutes);
 app.use("/ops", opsRoutes);
 app.use("/project-completion", projectCompletionRoutes);
