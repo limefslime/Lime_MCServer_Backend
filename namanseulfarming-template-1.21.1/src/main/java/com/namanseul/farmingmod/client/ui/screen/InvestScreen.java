@@ -25,7 +25,6 @@ public final class InvestScreen extends BaseGameScreen {
 
     private UiListPanel stockListPanel;
     private InvestStockViewData selectedStock;
-    private InvestTradeResultViewData lastTrade;
 
     private EditBox quantityInput;
     private Button buyButton;
@@ -186,7 +185,7 @@ public final class InvestScreen extends BaseGameScreen {
         quantityInput.setResponder(value -> onQuantityChanged());
 
         buyButton = addRenderableWidget(UiButton.create(
-                Component.literal("Buy"),
+                Component.literal("BUY"),
                 0,
                 0,
                 70,
@@ -195,7 +194,7 @@ public final class InvestScreen extends BaseGameScreen {
         ));
 
         sellButton = addRenderableWidget(UiButton.create(
-                Component.literal("Sell"),
+                Component.literal("SELL"),
                 0,
                 0,
                 70,
@@ -281,68 +280,50 @@ public final class InvestScreen extends BaseGameScreen {
         int lineGap = 12;
 
         if (selectedStock == null) {
-            graphics.drawString(font, Component.literal("Select a stock from the list."), x, y, 0xC7D7F1, false);
+            graphics.drawString(font, Component.literal("Select a stock."), x, y, 0xC7D7F1, false);
             return;
         }
 
         graphics.drawString(font, Component.literal(selectedStock.name()), x, y, 0xFFFFFF, false);
         y += lineGap;
-        graphics.drawString(font, Component.literal("Price: " + selectedStock.currentPrice()), x, y, 0xEAF1FF, false);
+        graphics.drawString(font, Component.literal("Current: " + selectedStock.currentPrice()), x, y, 0xEAF1FF, false);
         y += lineGap;
-
-        String changePrefix = selectedStock.changeAmount() > 0 ? "+" : "";
-        String rateText = String.format("%.2f", selectedStock.changeRate() * 100.0);
-        graphics.drawString(
-                font,
-                Component.literal("Change: " + changePrefix + selectedStock.changeAmount() + " (" + rateText + "%)"),
-                x,
-                y,
-                selectedStock.changeAmount() >= 0 ? 0x91F7A2 : 0xF7A4A4,
-                false
-        );
-        y += lineGap;
-
-        graphics.drawString(font, Component.literal("My Qty: " + selectedStock.holdingQuantity()), x, y, 0xEAF1FF, false);
+        graphics.drawString(font, Component.literal("Holding: " + selectedStock.holdingQuantity()), x, y, 0xEAF1FF, false);
         y += lineGap;
         graphics.drawString(font, Component.literal("Avg Buy: " + selectedStock.avgBuyPrice()), x, y, 0xEAF1FF, false);
         y += lineGap;
-        graphics.drawString(font, Component.literal("Invested: " + selectedStock.investedCost()), x, y, 0xEAF1FF, false);
-        y += lineGap;
-        graphics.drawString(font, Component.literal("Market Value: " + selectedStock.marketValue()), x, y, 0xEAF1FF, false);
-        y += lineGap;
-
-        String pnlPrefix = selectedStock.unrealizedPnl() > 0 ? "+" : "";
+        String pnlPrefix = selectedStock.unrealizedPnl() > 0 ? "+" : selectedStock.unrealizedPnl() < 0 ? "-" : "";
+        int pnlAbs = Math.abs(selectedStock.unrealizedPnl());
         graphics.drawString(
                 font,
-                Component.literal("Unrealized PnL: " + pnlPrefix + selectedStock.unrealizedPnl()),
+                Component.literal("PnL: " + pnlPrefix + pnlAbs),
                 x,
                 y,
                 selectedStock.unrealizedPnl() >= 0 ? 0x91F7A2 : 0xF7A4A4,
                 false
         );
-        y += lineGap;
-        graphics.drawString(font, Component.literal("Wallet: " + walletBalance), x, y, 0xDDE6F9, false);
-
-        if (lastTrade != null && selectedStock.stockId().equals(lastTrade.stockId())) {
-            y += lineGap + 2;
-            String side = "sell".equalsIgnoreCase(lastTrade.side()) ? "Sell" : "Buy";
-            graphics.drawString(
-                    font,
-                    Component.literal("Last " + side + ": " + lastTrade.quantity() + " @ " + lastTrade.executedPrice()),
-                    x,
-                    y,
-                    0xDDE6F9,
-                    false
-            );
-        }
     }
 
     private void renderActionPanel(GuiGraphics graphics) {
         int x = actionX + 10;
         int y = actionY + 50;
-        graphics.drawString(font, Component.literal("Trade amount updates wallet immediately."), x, y, 0xBFD0E8, false);
+
+        Integer quantity = validateQuantityInput();
+        String buySellText = "Buy: - / Sell: -";
+        String totalText = "Total: - (fee: -)";
+        if (quantity != null && selectedStock != null) {
+            int feeAmount = estimateFeeAmount(quantity);
+            long buyTotal = estimateBuyTotal(quantity);
+            long sellTotal = estimateSellTotal(quantity);
+            buySellText = "Buy: " + buyTotal + " / Sell: " + sellTotal;
+            totalText = "Total: " + calculateTotalPrice(quantity) + " (fee: " + feeAmount + ")";
+        }
+
+        graphics.drawString(font, Component.literal(buySellText), x, y, 0xEAF1FF, false);
         y += 12;
-        graphics.drawString(font, Component.literal("Buttons activate after detail is loaded."), x, y, 0xBFD0E8, false);
+        graphics.drawString(font, Component.literal(totalText), x, y, 0xEAF1FF, false);
+        y += 12;
+        graphics.drawString(font, Component.literal("Wallet: " + walletBalance), x, y, 0xDDE6F9, false);
 
         if (inputError != null && !inputError.isBlank()) {
             y += 14;
@@ -373,25 +354,24 @@ public final class InvestScreen extends BaseGameScreen {
     }
 
     private void requestTrade(boolean buy) {
-        if (selectedStock == null) {
-            statusMessage = "Select a stock first.";
-            updateActionButtons();
-            return;
-        }
-        if (!detailReady) {
-            statusMessage = "Wait for detail to load.";
-            updateActionButtons();
+        if (selectedStock == null || tradeLoading || listLoading || detailLoading || !detailReady) {
             return;
         }
 
         Integer quantity = validateQuantityInput();
         if (quantity == null) {
-            statusMessage = "Enter a valid quantity.";
-            updateActionButtons();
+            return;
+        }
+
+        if (buy && !canBuy(quantity)) {
+            return;
+        }
+        if (!buy && !canSell(quantity)) {
             return;
         }
 
         tradeLoading = true;
+        inputError = null;
         statusMessage = null;
         if (buy) {
             pendingBuyRequestId = UiClientNetworking.requestInvestBuy(selectedStock.stockId(), quantity);
@@ -410,7 +390,7 @@ public final class InvestScreen extends BaseGameScreen {
         setLoading(false);
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "Failed to load stock list." : payload.error());
+            setError("Failed to load stocks.");
             stocks.clear();
             selectedStock = null;
             detailReady = false;
@@ -428,7 +408,7 @@ public final class InvestScreen extends BaseGameScreen {
             refreshListEntries();
             restoreSelection(previousSelectedId);
         } catch (Exception ex) {
-            setError("Failed to parse stock list.");
+            setError("Failed to load stocks.");
             stocks.clear();
             selectedStock = null;
             detailReady = false;
@@ -447,7 +427,7 @@ public final class InvestScreen extends BaseGameScreen {
 
         if (!payload.success()) {
             detailReady = false;
-            setError(payload.error() == null ? "Failed to load stock detail." : payload.error());
+            setError("Failed to load stock.");
             updateActionButtons();
             return;
         }
@@ -463,7 +443,7 @@ public final class InvestScreen extends BaseGameScreen {
             updateSelectionByStockId(selectedStock.stockId());
         } catch (Exception ex) {
             detailReady = false;
-            setError("Failed to parse stock detail.");
+            setError("Failed to load stock.");
         }
 
         updateActionButtons();
@@ -484,15 +464,15 @@ public final class InvestScreen extends BaseGameScreen {
         tradeLoading = false;
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "Trade failed." : payload.error());
-            statusMessage = "Trade failed.";
+            String tradeError = resolveTradeErrorMessage(isBuyLike, payload.error());
+            setError(tradeError);
+            statusMessage = tradeError;
             updateActionButtons();
             return;
         }
 
         try {
             InvestTradeResultViewData result = InvestStockJsonParser.parseTradeResult(payload.dataJson());
-            lastTrade = result;
             walletBalance = result.walletBalanceAfter();
             if (result.stock() != null) {
                 upsertStock(result.stock());
@@ -501,8 +481,10 @@ public final class InvestScreen extends BaseGameScreen {
                 updateSelectionByStockId(result.stock().stockId());
             }
 
-            String side = "sell".equalsIgnoreCase(result.side()) ? "Sell" : "Buy";
-            statusMessage = side + " complete: " + result.quantity() + " / total " + result.totalPrice();
+            String sideMessage = "sell".equalsIgnoreCase(result.side())
+                    ? "Sold " + result.quantity() + " shares"
+                    : "Bought " + result.quantity() + " shares";
+            statusMessage = sideMessage;
             setError(null);
 
             requestStockList(true);
@@ -510,8 +492,9 @@ public final class InvestScreen extends BaseGameScreen {
                 requestStockDetail(selectedStock.stockId(), true);
             }
         } catch (Exception ex) {
-            setError("Failed to parse trade result.");
-            statusMessage = "Trade result parse failed.";
+            String tradeError = resolveTradeErrorMessage(isBuyLike, null);
+            setError(tradeError);
+            statusMessage = tradeError;
         }
 
         updateActionButtons();
@@ -590,48 +573,97 @@ public final class InvestScreen extends BaseGameScreen {
 
     private void onQuantityChanged() {
         validateQuantityInput();
+        statusMessage = null;
         updateActionButtons();
     }
 
     @Nullable
     private Integer validateQuantityInput() {
         if (quantityInput == null) {
-            inputError = "Quantity input unavailable";
+            inputError = null;
             return null;
         }
 
         String raw = quantityInput.getValue();
         if (raw == null || raw.isBlank()) {
-            inputError = "Enter quantity";
+            inputError = null;
             return null;
         }
 
         try {
             int quantity = Integer.parseInt(raw);
             if (quantity <= 0) {
-                inputError = "Quantity must be >= 1";
+                inputError = "Quantity must be greater than 0.";
                 return null;
             }
             inputError = null;
             return quantity;
         } catch (NumberFormatException ex) {
-            inputError = "Quantity must be numeric";
+            inputError = "Quantity must be numeric.";
             return null;
         }
+    }
+
+    private long calculateTotalPrice(@Nullable Integer quantity) {
+        if (quantity == null || selectedStock == null) {
+            return 0L;
+        }
+        return (long) quantity * Math.max(0, selectedStock.currentPrice());
+    }
+
+    private int estimateFeeAmount(@Nullable Integer quantity) {
+        return quantity == null || quantity <= 0 ? 0 : 0;
+    }
+
+    private long estimateBuyTotal(int quantity) {
+        return calculateTotalPrice(quantity) + estimateFeeAmount(quantity);
+    }
+
+    private long estimateSellTotal(int quantity) {
+        return Math.max(0L, calculateTotalPrice(quantity) - estimateFeeAmount(quantity));
+    }
+
+    private String resolveTradeErrorMessage(boolean isBuyLike, @Nullable String rawError) {
+        String normalized = rawError == null ? "" : rawError.toLowerCase();
+        if (normalized.contains("balance")) {
+            return "Not enough balance";
+        }
+        if (normalized.contains("quantity") || normalized.contains("share") || normalized.contains("holding")) {
+            return "Not enough shares";
+        }
+        return isBuyLike ? "Not enough balance" : "Not enough shares";
+    }
+
+    private boolean canBuy(int quantity) {
+        if (selectedStock == null || quantity <= 0 || !detailReady) {
+            return false;
+        }
+        int price = selectedStock.currentPrice();
+        if (price <= 0) {
+            return false;
+        }
+        long totalPrice = estimateBuyTotal(quantity);
+        return totalPrice <= walletBalance;
+    }
+
+    private boolean canSell(int quantity) {
+        if (selectedStock == null || quantity <= 0 || !detailReady) {
+            return false;
+        }
+        return selectedStock.holdingQuantity() >= quantity;
     }
 
     private void updateActionButtons() {
         boolean busy = listLoading || detailLoading || tradeLoading;
         Integer quantity = validateQuantityInput();
-        boolean hasStock = selectedStock != null;
-        boolean canTrade = hasStock && detailReady && quantity != null && !busy;
-        boolean canSell = canTrade && selectedStock.holdingQuantity() >= quantity;
+        boolean buyEnabled = !busy && quantity != null && canBuy(quantity);
+        boolean sellEnabled = !busy && quantity != null && canSell(quantity);
 
         if (buyButton != null) {
-            buyButton.active = canTrade;
+            buyButton.active = buyEnabled;
         }
         if (sellButton != null) {
-            sellButton.active = canSell;
+            sellButton.active = sellEnabled;
         }
         if (refreshButton != null) {
             refreshButton.active = !busy;

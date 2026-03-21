@@ -14,7 +14,14 @@ public record InvestStockViewData(
         int unrealizedPnl
 ) {
     public String listLabel() {
-        String changePrefix = changeAmount > 0 ? "+" : "";
-        return name + "  " + currentPrice + " (" + changePrefix + changeAmount + ")";
+        String changeText;
+        if (changeAmount > 0) {
+            changeText = "+" + changeAmount;
+        } else if (changeAmount < 0) {
+            changeText = Integer.toString(changeAmount);
+        } else {
+            changeText = "0";
+        }
+        return name + "  " + currentPrice + "  " + changeText;
     }
 }
