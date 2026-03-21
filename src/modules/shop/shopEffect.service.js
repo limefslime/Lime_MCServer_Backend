@@ -101,39 +101,74 @@ function resolveEventModifierInfo(activeEvents, itemCategory) {
   };
 }
 
-function buildShopModifierBreakdown({ focus, projectEffects, events }) {
-  const focusMultiplier = Number(focus?.multiplier ?? 1);
-  const projectEffectsMultiplier = Number(projectEffects?.multiplier ?? 1);
-  const eventsMultiplier = Number(events?.multiplier ?? 1);
+function normalizeRate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 0;
+  }
+  return Math.min(0.5, numeric);
+}
+
+function normalizeMultiplier(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 1;
+  }
+  return numeric;
+}
+
+function resolveVillageModifierInfo(villageEffect) {
+  const discountRate = normalizeRate(villageEffect?.discountRate);
+  const buyMultiplier = normalizeMultiplier(villageEffect?.buyPriceMultiplier);
+  const level = Number.isInteger(Number(villageEffect?.level))
+    ? Math.max(1, Number(villageEffect.level))
+    : 1;
+
+  return {
+    applied: Boolean(villageEffect?.applied) && discountRate > 0,
+    level,
+    discountRate,
+    buyMultiplier,
+  };
+}
+
+function buildShopModifierBreakdown({ focus, projectEffects, events, village }) {
+  const focusMultiplier = normalizeMultiplier(focus?.multiplier);
+  const projectEffectsMultiplier = normalizeMultiplier(projectEffects?.multiplier);
+  const eventsMultiplier = normalizeMultiplier(events?.multiplier);
+  const villageBuyMultiplier = normalizeMultiplier(village?.buyMultiplier);
+
+  const totalSellMultiplier =
+    focusMultiplier * projectEffectsMultiplier * eventsMultiplier;
+  const totalBuyMultiplier = totalSellMultiplier * villageBuyMultiplier;
 
   return {
     focus: {
       applied: Boolean(focus?.applied),
       target: focus?.target ?? null,
-      multiplier: Number.isFinite(focusMultiplier) && focusMultiplier > 0 ? focusMultiplier : 1,
+      multiplier: focusMultiplier,
     },
     projectEffects: {
       applied: Boolean(projectEffects?.applied),
       count: Number.isInteger(projectEffects?.count) ? projectEffects.count : 0,
-      multiplier:
-        Number.isFinite(projectEffectsMultiplier) && projectEffectsMultiplier > 0
-          ? projectEffectsMultiplier
-          : 1,
+      multiplier: projectEffectsMultiplier,
       targets: Array.isArray(projectEffects?.targets) ? projectEffects.targets : [],
     },
     events: {
       applied: Boolean(events?.applied),
       count: Number.isInteger(events?.count) ? events.count : 0,
-      multiplier:
-        Number.isFinite(eventsMultiplier) && eventsMultiplier > 0 ? eventsMultiplier : 1,
+      multiplier: eventsMultiplier,
       regions: Array.isArray(events?.regions) ? events.regions : [],
     },
-    totalMultiplier:
-      (Number.isFinite(focusMultiplier) && focusMultiplier > 0 ? focusMultiplier : 1) *
-      (Number.isFinite(projectEffectsMultiplier) && projectEffectsMultiplier > 0
-        ? projectEffectsMultiplier
-        : 1) *
-      (Number.isFinite(eventsMultiplier) && eventsMultiplier > 0 ? eventsMultiplier : 1),
+    village: {
+      applied: Boolean(village?.applied),
+      level: Number.isInteger(village?.level) ? village.level : 1,
+      discountRate: normalizeRate(village?.discountRate),
+      buyMultiplier: villageBuyMultiplier,
+    },
+    totalBuyMultiplier,
+    totalSellMultiplier,
+    totalMultiplier: totalBuyMultiplier,
   };
 }
 
@@ -141,44 +176,34 @@ export function calculateShopModifiers({
   activeEvents,
   focusState,
   projectEffects,
+  villageEffect,
   itemCategory,
 }) {
   const safeActiveEvents = Array.isArray(activeEvents) ? activeEvents : [];
   const safeProjectEffects = Array.isArray(projectEffects) ? projectEffects : [];
   const safeFocusState = typeof focusState === "string" ? focusState : null;
+  const villageInfo = resolveVillageModifierInfo(villageEffect);
 
   let buyPriceMultiplier = 1;
   let sellPriceMultiplier = 1;
   const extraRewardMultiplier = 1;
 
   if (typeof itemCategory !== "string" || itemCategory.trim().length === 0) {
+    const breakdown = buildShopModifierBreakdown({
+      focus: resolveFocusModifierInfo(null, null),
+      projectEffects: resolveProjectEffectModifierInfo([], null),
+      events: resolveEventModifierInfo([], null),
+      village: villageInfo,
+    });
     return {
-      buyPriceMultiplier,
-      sellPriceMultiplier,
+      buyPriceMultiplier: buyPriceMultiplier * breakdown.totalBuyMultiplier,
+      sellPriceMultiplier: sellPriceMultiplier * breakdown.totalSellMultiplier,
       extraRewardMultiplier,
-      breakdown: buildShopModifierBreakdown({
-        focus: resolveFocusModifierInfo(null, null),
-        projectEffects: resolveProjectEffectModifierInfo([], null),
-        events: resolveEventModifierInfo([], null),
-      }),
+      breakdown,
     };
   }
 
   const safeItemCategory = itemCategory.trim();
-
-  if (safeItemCategory === "misc") {
-    return {
-      buyPriceMultiplier,
-      sellPriceMultiplier,
-      extraRewardMultiplier,
-      breakdown: buildShopModifierBreakdown({
-        focus: resolveFocusModifierInfo(null, null),
-        projectEffects: resolveProjectEffectModifierInfo([], safeItemCategory),
-        events: resolveEventModifierInfo([], safeItemCategory),
-      }),
-    };
-  }
-
   const focusInfo = resolveFocusModifierInfo(safeFocusState, safeItemCategory);
   const projectEffectsInfo = resolveProjectEffectModifierInfo(safeProjectEffects, safeItemCategory);
   const eventInfo = resolveEventModifierInfo(safeActiveEvents, safeItemCategory);
@@ -186,10 +211,11 @@ export function calculateShopModifiers({
     focus: focusInfo,
     projectEffects: projectEffectsInfo,
     events: eventInfo,
+    village: villageInfo,
   });
 
-  buyPriceMultiplier *= breakdown.totalMultiplier;
-  sellPriceMultiplier *= breakdown.totalMultiplier;
+  buyPriceMultiplier *= breakdown.totalBuyMultiplier;
+  sellPriceMultiplier *= breakdown.totalSellMultiplier;
 
   return {
     buyPriceMultiplier,
