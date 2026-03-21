@@ -94,6 +94,20 @@ public final class UiClientNetworking {
         return send(UiScreenType.INVEST, UiAction.INVEST_CONTRIBUTE, payload);
     }
 
+    public static String requestVillageOverview(boolean forceRefresh) {
+        return send(UiScreenType.VILLAGE, UiAction.VILLAGE_OVERVIEW, payloadWithForceRefresh(forceRefresh));
+    }
+
+    public static String requestVillageRefresh() {
+        return send(UiScreenType.VILLAGE, UiAction.VILLAGE_REFRESH, payloadWithForceRefresh(true));
+    }
+
+    public static String requestVillageDonate(int amount) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("amount", amount);
+        return send(UiScreenType.VILLAGE, UiAction.VILLAGE_DONATE, payload);
+    }
+
     public static String requestStatusOverview(boolean forceRefresh) {
         return send(UiScreenType.STATUS, UiAction.STATUS_OVERVIEW, payloadWithForceRefresh(forceRefresh));
     }
