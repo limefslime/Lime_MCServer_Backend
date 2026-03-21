@@ -45,29 +45,48 @@ public final class PlayerActivityTracker {
         append(playerUuid, entry);
     }
 
-    public static void recordInvest(UUID playerUuid, JsonElement result) {
+    public static void recordInvest(UUID playerUuid, UiAction action, JsonElement result) {
         if (result == null || !result.isJsonObject()) {
             return;
         }
         JsonObject root = result.getAsJsonObject();
 
-        String projectId = readString(root, "projectId", "unknown");
-        int invested = readInt(root, "invested", 0);
-        int projectTotal = readInt(root, "projectTotal", 0);
+        String side = resolveInvestSide(action, root);
+        String stockId = readString(root, "stockId", readString(root, "projectId", "unknown"));
+        int quantity = readInt(root, "quantity", 0);
+        int totalPrice = readInt(root, "totalPrice", readInt(root, "invested", 0));
+        int walletBalanceAfter = readInt(root, "walletBalanceAfter", readInt(root, "balanceAfter", 0));
+        int amountDelta = "sell".equals(side) ? Math.max(totalPrice, 0) : -Math.max(totalPrice, 0);
 
         JsonObject entry = new JsonObject();
-        entry.addProperty("entryId", "invest:" + Instant.now().toEpochMilli() + ":" + projectId);
+        entry.addProperty("entryId", "invest:" + Instant.now().toEpochMilli() + ":" + stockId);
         entry.addProperty("occurredAtEpochMillis", Instant.now().toEpochMilli());
         entry.addProperty("category", "invest");
-        entry.addProperty("action", "contribute");
-        entry.addProperty("title", "Project invest");
-        entry.addProperty("projectId", projectId);
-        entry.addProperty("amountDelta", -Math.max(invested, 0));
-        entry.addProperty("invested", invested);
-        entry.addProperty("projectTotal", projectTotal);
-        entry.addProperty("description", projectId + " +" + invested + " (total " + projectTotal + ")");
+        entry.addProperty("action", side);
+        entry.addProperty("title", "Stock " + side);
+        entry.addProperty("stockId", stockId);
+        entry.addProperty("quantity", quantity);
+        entry.addProperty("amountDelta", amountDelta);
+        entry.addProperty("totalPrice", totalPrice);
+        entry.addProperty("balanceAfter", walletBalanceAfter);
+        entry.addProperty("description", stockId + " x" + quantity + " total " + totalPrice);
         entry.addProperty("source", "ui_live");
         append(playerUuid, entry);
+    }
+
+    private static String resolveInvestSide(UiAction action, JsonObject root) {
+        String sideFromPayload = readString(root, "side", "");
+        if ("buy".equalsIgnoreCase(sideFromPayload)) {
+            return "buy";
+        }
+        if ("sell".equalsIgnoreCase(sideFromPayload)) {
+            return "sell";
+        }
+
+        if (action == UiAction.INVEST_SELL) {
+            return "sell";
+        }
+        return "buy";
     }
 
     public static void recordMailClaim(UUID playerUuid, JsonElement result) {

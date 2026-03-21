@@ -18,6 +18,8 @@ import com.namanseul.farmingmod.server.player.PlayerActivityTracker;
 import com.namanseul.farmingmod.server.player.PlayerOverviewUiService;
 import com.namanseul.farmingmod.server.status.BackendStatusBridge;
 import com.namanseul.farmingmod.server.status.StatusUiService;
+import com.namanseul.farmingmod.server.village.BackendVillageBridge;
+import com.namanseul.farmingmod.server.village.VillageUiService;
 import com.namanseul.farmingmod.server.shop.BackendShopBridge;
 import com.namanseul.farmingmod.server.shop.PlayerShopListingService;
 import com.namanseul.farmingmod.server.shop.ShopUiService;
@@ -58,6 +60,7 @@ public final class UiServerPayloadHandlers {
                 case SHOP -> handleShopRequest(payload, player);
                 case MAIL -> handleMailRequest(payload, player);
                 case INVEST -> handleInvestRequest(payload, player);
+                case VILLAGE -> handleVillageRequest(payload, player);
                 case STATUS -> handleStatusRequest(payload, player);
                 case PLAYER -> handlePlayerRequest(payload, player);
             }
@@ -102,6 +105,15 @@ public final class UiServerPayloadHandlers {
             ));
         } catch (BackendStatusBridge.StatusBridgeException | StatusUiService.StatusUiException ex) {
             NamanseulFarming.LOGGER.warn("[UI] Status bridge failed id={} action={} error={}",
+                    payload.requestId(), payload.action().serialized(), ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (BackendVillageBridge.VillageBridgeException | VillageUiService.VillageUiException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Village bridge failed id={} action={} error={}",
                     payload.requestId(), payload.action().serialized(), ex.getMessage());
             PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
                     payload.requestId(),
@@ -348,32 +360,44 @@ public final class UiServerPayloadHandlers {
         switch (payload.action()) {
             case INVEST_LIST -> {
                 boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
-                result = InvestUiService.listProjects(player.getUUID(), forceRefresh);
+                result = InvestUiService.listStocks(player.getUUID(), forceRefresh);
             }
             case INVEST_REFRESH -> {
-                result = InvestUiService.listProjects(player.getUUID(), true);
+                result = InvestUiService.listStocks(player.getUUID(), true);
             }
             case INVEST_DETAIL -> {
-                String projectId = readProjectId(requestPayload);
+                String projectId = readInvestTargetId(requestPayload);
                 boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
-                result = InvestUiService.getProjectDetail(player.getUUID(), projectId, forceRefresh);
+                result = InvestUiService.getStockDetail(player.getUUID(), projectId, forceRefresh);
             }
             case INVEST_PROGRESS -> {
-                String projectId = readProjectId(requestPayload);
+                String projectId = readInvestTargetId(requestPayload);
                 boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
-                result = InvestUiService.getProjectProgress(player.getUUID(), projectId, forceRefresh);
+                result = InvestUiService.getStockDetail(player.getUUID(), projectId, forceRefresh);
             }
             case INVEST_CONTRIBUTE -> {
-                String projectId = readProjectId(requestPayload);
+                String projectId = readInvestTargetId(requestPayload);
                 int amount = readAmount(requestPayload);
-                result = InvestUiService.invest(player.getUUID(), projectId, amount);
+                result = InvestUiService.buy(player.getUUID(), projectId, amount);
+            }
+            case INVEST_BUY -> {
+                String stockId = readInvestTargetId(requestPayload);
+                int quantity = readQuantity(requestPayload);
+                result = InvestUiService.buy(player.getUUID(), stockId, quantity);
+            }
+            case INVEST_SELL -> {
+                String stockId = readInvestTargetId(requestPayload);
+                int quantity = readQuantity(requestPayload);
+                result = InvestUiService.sell(player.getUUID(), stockId, quantity);
             }
             default -> throw new IllegalArgumentException("unsupported invest action");
         }
 
-        if (payload.action() == UiAction.INVEST_CONTRIBUTE) {
+        if (payload.action() == UiAction.INVEST_CONTRIBUTE
+                || payload.action() == UiAction.INVEST_BUY
+                || payload.action() == UiAction.INVEST_SELL) {
             try {
-                PlayerActivityTracker.recordInvest(player.getUUID(), result);
+                PlayerActivityTracker.recordInvest(player.getUUID(), payload.action(), result);
             } catch (Exception ignored) {
                 // activity tracking must never break core flow
             }
@@ -392,6 +416,49 @@ public final class UiServerPayloadHandlers {
         if (Config.networkDebugLog()) {
             NamanseulFarming.LOGGER.info(
                     "[UI] S->C responseId={} success=true screen=invest action={}",
+                    payload.requestId(),
+                    payload.action().serialized()
+            );
+        }
+    }
+
+    private static void handleVillageRequest(UiRequestPayload payload, ServerPlayer player)
+            throws BackendVillageBridge.VillageBridgeException, VillageUiService.VillageUiException {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openVillage(payload.requestId()));
+            return;
+        }
+
+        JsonObject requestPayload = parsePayloadObject(payload.payloadJson());
+        JsonElement result;
+        switch (payload.action()) {
+            case VILLAGE_OVERVIEW -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = VillageUiService.getOverview(player.getUUID(), forceRefresh);
+            }
+            case VILLAGE_REFRESH -> {
+                result = VillageUiService.getOverview(player.getUUID(), true);
+            }
+            case VILLAGE_DONATE -> {
+                int amount = readAmount(requestPayload);
+                result = VillageUiService.donate(player.getUUID(), amount);
+            }
+            default -> throw new IllegalArgumentException("unsupported village action");
+        }
+
+        PacketDistributor.sendToPlayer(
+                player,
+                UiResponsePayload.successJson(
+                        payload.requestId(),
+                        UiScreenType.VILLAGE,
+                        payload.action(),
+                        GSON.toJson(result)
+                )
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=village action={}",
                     payload.requestId(),
                     payload.action().serialized()
             );
@@ -580,16 +647,24 @@ public final class UiServerPayloadHandlers {
         return mailId.trim();
     }
 
-    private static String readProjectId(JsonObject payload) {
-        JsonElement value = payload.get("projectId");
-        if (value == null || value.isJsonNull()) {
-            throw new IllegalArgumentException("projectId is required");
+    private static String readInvestTargetId(JsonObject payload) {
+        JsonElement stockId = payload.get("stockId");
+        if (stockId != null && !stockId.isJsonNull()) {
+            String value = stockId.getAsString();
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
         }
-        String projectId = value.getAsString();
-        if (projectId == null || projectId.isBlank()) {
-            throw new IllegalArgumentException("projectId is required");
+
+        JsonElement projectId = payload.get("projectId");
+        if (projectId != null && !projectId.isJsonNull()) {
+            String value = projectId.getAsString();
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
         }
-        return projectId.trim();
+
+        throw new IllegalArgumentException("stockId is required");
     }
 
     private static int readAmount(JsonObject payload) {
