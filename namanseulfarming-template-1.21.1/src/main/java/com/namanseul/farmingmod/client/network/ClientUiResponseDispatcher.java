@@ -8,6 +8,7 @@ import com.namanseul.farmingmod.client.ui.screen.MailScreen;
 import com.namanseul.farmingmod.client.ui.screen.PlayerOverviewScreen;
 import com.namanseul.farmingmod.client.ui.screen.ShopScreen;
 import com.namanseul.farmingmod.client.ui.screen.StatusScreen;
+import com.namanseul.farmingmod.client.ui.screen.VillageScreen;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.UiScreenType;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
@@ -35,6 +36,7 @@ public final class ClientUiResponseDispatcher {
                 case SHOP -> handleShop(payload, minecraft);
                 case MAIL -> handleMail(payload, minecraft);
                 case INVEST -> handleInvest(payload, minecraft);
+                case VILLAGE -> handleVillage(payload, minecraft);
                 case STATUS -> handleStatus(payload, minecraft);
                 case PLAYER -> handlePlayer(payload, minecraft);
             }
@@ -106,6 +108,23 @@ public final class ClientUiResponseDispatcher {
 
         if (shouldAutoOpenJsonScreen(payload)) {
             InvestScreen autoOpened = InvestScreen.openStandalone();
+            autoOpened.handleServerResponse(payload);
+        }
+    }
+
+    private static void handleVillage(UiResponsePayload payload, Minecraft minecraft) {
+        if (payload.action() == UiAction.OPEN) {
+            VillageScreen.openStandalone();
+            return;
+        }
+
+        if (minecraft.screen instanceof VillageScreen villageScreen) {
+            villageScreen.handleServerResponse(payload);
+            return;
+        }
+
+        if (shouldAutoOpenJsonScreen(payload)) {
+            VillageScreen autoOpened = VillageScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
     }

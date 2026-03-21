@@ -87,6 +87,10 @@ public record UiResponsePayload(
         return new UiResponsePayload(requestId, true, UiScreenType.INVEST, UiAction.OPEN, null, null, null);
     }
 
+    public static UiResponsePayload openVillage(String requestId) {
+        return new UiResponsePayload(requestId, true, UiScreenType.VILLAGE, UiAction.OPEN, null, null, null);
+    }
+
     public static UiResponsePayload openStatus(String requestId) {
         return new UiResponsePayload(requestId, true, UiScreenType.STATUS, UiAction.OPEN, null, null, null);
     }
