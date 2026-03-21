@@ -20,21 +20,21 @@ public final class ShopActionPanelView {
     ) {
         int color = 0xDDE6F9;
         graphics.drawString(font, Component.translatable("screen.namanseulfarming.shop.quantity"), x, y, color, false);
+        String state = null;
+        int stateColor = 0xBFD0E8;
         if (quantityError != null && !quantityError.isBlank()) {
-            graphics.drawString(font, Component.literal(quantityError), x + 70, y, 0xFF7D7D, false);
+            state = quantityError;
+            stateColor = 0xFF7D7D;
+        } else if (tradeLoading) {
+            state = "Processing trade...";
+        } else if (previewLoading) {
+            state = "Checking price...";
+        } else if (statusMessage != null && !statusMessage.isBlank()) {
+            state = statusMessage;
         }
 
-        int stateY = y + 40;
-        if (previewLoading) {
-            graphics.drawString(font, Component.translatable("screen.namanseulfarming.shop.preview_loading"), x, stateY, color, false);
-            stateY += 12;
-        }
-        if (tradeLoading) {
-            graphics.drawString(font, Component.translatable("screen.namanseulfarming.shop.trade_loading"), x, stateY, color, false);
-            stateY += 12;
-        }
-        if (statusMessage != null && !statusMessage.isBlank()) {
-            graphics.drawString(font, Component.literal(statusMessage), x, stateY, 0xBFD0E8, false);
+        if (state != null) {
+            graphics.drawString(font, Component.literal(state), x + 56, y, stateColor, false);
         }
     }
 }

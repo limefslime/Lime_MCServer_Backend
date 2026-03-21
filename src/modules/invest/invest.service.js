@@ -1,26 +1,22 @@
-﻿import { withTransaction } from "../../db/pool.js";
-import { createProjectCompletionMail } from "../mail/mail.service.js";
+import { withTransaction } from "../../db/pool.js";
 import {
-  activateProjectEffectByProjectId,
-  getProjectCompletionStatus,
-} from "../project-completion/projectCompletion.service.js";
-import {
+  addBalance,
   ensurePlayerExists,
   ensureWalletExists,
+  findWalletByPlayerId,
   insertLedgerEntry,
   subtractBalanceIfEnough,
 } from "../wallet/wallet.repository.js";
 import {
-  addContribution,
-  createProject as createProjectRow,
-  getActiveProjects,
-  getProjectById,
-  getProjectContributions,
-  getPlayerContributionAmount,
-  getProjectProgressSnapshot as getProjectProgressSnapshotRow,
-  getProjectTotal,
-  increaseProjectAmount,
-} from "./invest.repository.js";
+  deletePlayerStockPosition,
+  findPlayerStockPosition,
+  findPlayerStockPositionForUpdate,
+  findStockById,
+  findStockByIdForUpdate,
+  findAllStocks,
+  listStocksWithPlayerPosition,
+  upsertPlayerStockPosition,
+} from "./stock.repository.js";
 
 class InvestServiceError extends Error {
   constructor(code, message) {
@@ -35,20 +31,27 @@ export const investErrorCode = {
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
   PROJECT_NOT_ACTIVE: "PROJECT_NOT_ACTIVE",
   INSUFFICIENT_BALANCE: "INSUFFICIENT_BALANCE",
+  SERVICE_DISABLED: "SERVICE_DISABLED",
+  STOCK_NOT_FOUND: "STOCK_NOT_FOUND",
+  INSUFFICIENT_QUANTITY: "INSUFFICIENT_QUANTITY",
 };
 
-const PROJECT_REGIONS = new Set(["agri", "port", "industry", "global"]);
-const INVEST_LEDGER_REASON = "invest_project";
+const LEGACY_DISABLED_MESSAGE = "project-based invest system is disabled";
+const MAX_SAFE_TOTAL = Number.MAX_SAFE_INTEGER;
 
 export function isInvestServiceError(error) {
   return error instanceof InvestServiceError;
+}
+
+function throwInvalid(message) {
+  throw new InvestServiceError(investErrorCode.INVALID_INPUT, message);
 }
 
 function validateUuid(value, fieldName) {
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (typeof value !== "string" || !uuidRegex.test(value)) {
-    throw new InvestServiceError(investErrorCode.INVALID_INPUT, `${fieldName} must be a valid uuid`);
+    throwInvalid(`${fieldName} must be a valid uuid`);
   }
 }
 
@@ -56,442 +59,359 @@ function validatePlayerId(playerId) {
   validateUuid(playerId, "playerId");
 }
 
-function validateProjectId(projectId) {
-  validateUuid(projectId, "projectId");
+function validateStockId(stockId) {
+  validateUuid(stockId, "stockId");
 }
 
-function validateAmount(amount) {
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new InvestServiceError(investErrorCode.INVALID_INPUT, "amount must be a positive integer");
-  }
-}
-
-function validateProjectInput({ name, targetAmount, region }) {
-  if (typeof name !== "string" || name.trim().length === 0) {
-    throw new InvestServiceError(investErrorCode.INVALID_INPUT, "name is required");
-  }
-  if (!Number.isInteger(targetAmount) || targetAmount <= 0) {
-    throw new InvestServiceError(investErrorCode.INVALID_INPUT, "targetAmount must be a positive integer");
-  }
-  if (!PROJECT_REGIONS.has(region)) {
-    throw new InvestServiceError(
-      investErrorCode.INVALID_INPUT,
-      "region must be agri, port, industry, or global"
-    );
+function validateQuantity(quantity) {
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throwInvalid("quantity must be a positive integer");
   }
 }
 
-function assertProjectExists(project) {
-  if (!project) {
-    throw new InvestServiceError(investErrorCode.PROJECT_NOT_FOUND, "project not found");
+function ensureSafeTotal(unitPrice, quantity) {
+  const total = Number(unitPrice) * Number(quantity);
+  if (!Number.isSafeInteger(total) || total <= 0 || total > MAX_SAFE_TOTAL) {
+    throwInvalid("trade total is too large");
   }
+  return total;
 }
 
-function assertProjectRow(project) {
-  const isObject = typeof project === "object" && project !== null;
-  const hasId = isObject && typeof project.id === "string" && project.id.trim().length > 0;
-  const hasName = isObject && typeof project.name === "string" && project.name.trim().length > 0;
-  const hasStatus = isObject && typeof project.status === "string" && project.status.trim().length > 0;
-  const hasValidTargetAmount = isObject && Number.isFinite(Number(project.target_amount));
-  const hasValidCurrentAmount = isObject && Number.isFinite(Number(project.current_amount));
-
-  if (!isObject || !hasId || !hasName || !hasStatus || !hasValidTargetAmount || !hasValidCurrentAmount) {
-    throw new InvestServiceError(investErrorCode.INVALID_INPUT, "invalid project data");
+function toInt(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
   }
+  return Math.round(numeric);
 }
 
-function assertContributionRow(contribution) {
-  const isObject = typeof contribution === "object" && contribution !== null;
-  const hasPlayerId =
-    isObject &&
-    typeof contribution.player_id === "string" &&
-    contribution.player_id.trim().length > 0;
-  const hasAmount = isObject && Number.isFinite(Number(contribution.amount));
+export function calculateEvaluation({ quantity, avgBuyPrice, currentPrice }) {
+  const safeQuantity = Math.max(0, toInt(quantity, 0));
+  const safeAvgBuyPrice = Math.max(0, toInt(avgBuyPrice, 0));
+  const safeCurrentPrice = Math.max(0, toInt(currentPrice, 0));
 
-  if (!isObject || !hasPlayerId || !hasAmount) {
-    throw new InvestServiceError(investErrorCode.INVALID_INPUT, "invalid contribution data");
-  }
-}
-
-function assertProjectStillInvestable(project) {
-  if (project.status !== "active") {
-    throw new InvestServiceError(investErrorCode.PROJECT_NOT_ACTIVE, "project is not active");
-  }
-}
-
-function normalizeProjectAmounts(row) {
-  assertProjectRow(row);
+  const investedCost = safeQuantity * safeAvgBuyPrice;
+  const marketValue = safeQuantity * safeCurrentPrice;
+  const unrealizedPnl = marketValue - investedCost;
 
   return {
-    targetAmount: Number(row.target_amount),
-    currentAmount: Number(row.current_amount),
+    quantity: safeQuantity,
+    avgBuyPrice: safeAvgBuyPrice,
+    currentPrice: safeCurrentPrice,
+    investedCost,
+    marketValue,
+    unrealizedPnl,
   };
 }
 
-function calculateProjectProgress(targetAmount, currentAmount) {
-  return targetAmount > 0 ? currentAmount / targetAmount : 0;
-}
-
-function buildInvestListItem(row) {
-  const { targetAmount, currentAmount } = normalizeProjectAmounts(row);
+function mapStockRow(row, position = null) {
+  const currentPrice = toInt(row.current_price, 0);
+  const previousPrice = toInt(row.previous_price, currentPrice);
+  const quantity = Math.max(0, toInt(position?.quantity, 0));
+  const avgBuyPrice = Math.max(0, toInt(position?.avg_buy_price, 0));
+  const evaluation = calculateEvaluation({
+    quantity,
+    avgBuyPrice,
+    currentPrice,
+  });
+  const changeAmount = currentPrice - previousPrice;
+  const changeRate = previousPrice > 0 ? changeAmount / previousPrice : 0;
 
   return {
     id: row.id,
     name: row.name,
-    targetAmount,
-    currentAmount,
-    progress: calculateProjectProgress(targetAmount, currentAmount),
-    status: row.status,
+    currentPrice,
+    previousPrice,
+    changeAmount,
+    changeRate,
+    volatilityType: row.volatility_type,
+    minPrice: toInt(row.min_price, currentPrice),
+    maxPrice: toInt(row.max_price, currentPrice),
+    holding: {
+      quantity: evaluation.quantity,
+      avgBuyPrice: evaluation.avgBuyPrice,
+      investedCost: evaluation.investedCost,
+      marketValue: evaluation.marketValue,
+      unrealizedPnl: evaluation.unrealizedPnl,
+    },
   };
 }
 
-function buildProjectCreateResult(row) {
-  const { targetAmount, currentAmount } = normalizeProjectAmounts(row);
-
+function mapWalletRow(walletRow) {
   return {
-    id: row.id,
-    name: row.name,
-    targetAmount,
-    currentAmount,
-    status: row.status,
+    balance: Math.max(0, toInt(walletRow?.balance, 0)),
   };
 }
 
-function buildProjectDetailResult(row, contributors) {
-  const { targetAmount, currentAmount } = normalizeProjectAmounts(row);
-
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    targetAmount,
-    currentAmount,
-    progress: calculateProjectProgress(targetAmount, currentAmount),
-    contributors,
-  };
-}
-
-function buildInvestLedgerEntry({ playerId, amount, type, reason }) {
-  return {
-    playerId,
-    type,
-    amount,
-    reason,
-  };
-}
-
-function buildContributionPayload({ projectId, playerId, amount }) {
-  return {
-    projectId,
-    playerId,
-    amount,
-  };
-}
-
-function buildInvestResult({ projectId, amount, projectTotal }) {
-  return {
-    projectId,
-    invested: amount,
-    projectTotal,
-  };
-}
-
-async function getProjectProgressSnapshot(projectId, executor) {
-  return getProjectProgressSnapshotRow(projectId, executor);
-}
-
-function toFiniteNumberOrNull(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
-}
-
-function calculateProgressPercent(targetAmount, currentAmount) {
-  if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
-    return null;
-  }
-  if (!Number.isFinite(currentAmount)) {
-    return null;
-  }
-  return currentAmount / targetAmount;
-}
-
-function buildInvestmentProgressInfo({ fundingStatus, contributionAmount }) {
-  const currentAmount = toFiniteNumberOrNull(fundingStatus?.current_amount);
-  const targetAmount = toFiniteNumberOrNull(fundingStatus?.target_amount);
-
-  let remainingAmount = null;
-  if (targetAmount !== null && currentAmount !== null) {
-    remainingAmount = Math.max(targetAmount - currentAmount, 0);
-  }
-
-  return {
-    currentAmount,
-    targetAmount,
-    remainingAmount,
-    progressPercent: calculateProgressPercent(targetAmount, currentAmount),
-    contributionAmount: toFiniteNumberOrNull(contributionAmount),
-  };
-}
-
-function shouldActivateProjectEffect(projectFundingStatus) {
-  if (!projectFundingStatus || typeof projectFundingStatus !== "object") {
-    return false;
-  }
-
-  const currentAmount = Number(projectFundingStatus.current_amount);
-  const targetAmount = Number(projectFundingStatus.target_amount);
-
-  if (!Number.isFinite(currentAmount) || !Number.isFinite(targetAmount)) {
-    return false;
-  }
-
-  if (targetAmount <= 0) {
-    return false;
-  }
-
-  return currentAmount >= targetAmount;
-}
-
-function buildInvestmentCompletionInfo({
-  reachedTarget,
-  activationResult,
-  createdCompletionMail = false,
-  completionStatus = null,
-}) {
-  if (!reachedTarget) {
-    return {
-      reachedTarget: false,
-      activatedEffect: false,
-      wasAlreadyCompleted: false,
-      effectTarget: null,
-      effectType: null,
-      createdCompletionMail: false,
-      completionProcessed: false,
-      rewardMailCount: 0,
-      rewardTotalAmount: 0,
-    };
-  }
-
-  const wasAlreadyActive = activationResult?.wasAlreadyActive === true;
-  const wasAlreadyCompletedFromProject = activationResult?.wasAlreadyCompleted === true;
-  const wasAlreadyCompleted = wasAlreadyCompletedFromProject || wasAlreadyActive;
-  const isNowActive = activationResult?.isNowActive === true;
-  const activatedEffect =
-    isNowActive && !wasAlreadyActive && !wasAlreadyCompletedFromProject;
-  const effectTarget =
-    activationResult?.effectTarget ?? activationResult?.effect?.effect_target ?? null;
-  const effectType = activationResult?.effectType ?? activationResult?.effect?.effect_type ?? null;
-  const completionProcessedFromStatus =
-    completionStatus && typeof completionStatus === "object"
-      ? Boolean(completionStatus.completionProcessed)
-      : false;
-  const completionProcessed = activatedEffect || wasAlreadyCompleted || completionProcessedFromStatus;
-  const rewardMailCount =
-    completionStatus && typeof completionStatus === "object"
-      ? Number(completionStatus.rewardMailCount ?? 0)
-      : 0;
-  const rewardTotalAmount =
-    completionStatus && typeof completionStatus === "object"
-      ? Number(completionStatus.rewardTotalAmount ?? 0)
-      : 0;
-
-  return {
-    reachedTarget: true,
-    activatedEffect,
-    wasAlreadyCompleted,
-    effectTarget,
-    effectType,
-    createdCompletionMail: Boolean(createdCompletionMail),
-    completionProcessed,
-    rewardMailCount,
-    rewardTotalAmount,
-  };
-}
-
-async function evaluateProjectCompletionAfterInvestment(projectId, projectFundingStatus, executor) {
-  const reachedTarget = shouldActivateProjectEffect(projectFundingStatus);
-  if (!reachedTarget) {
-    return {
-      completionInfo: buildInvestmentCompletionInfo({ reachedTarget, activationResult: null }),
-      activationResult: null,
-    };
-  }
-
-  const activationResult = await activateProjectEffectByProjectId(projectId, executor);
-  return {
-    completionInfo: buildInvestmentCompletionInfo({ reachedTarget, activationResult }),
-    activationResult,
-  };
-}
-
-function shouldCreateCompletionMail(completionInfo) {
-  return (
-    completionInfo.reachedTarget === true &&
-    completionInfo.activatedEffect === true &&
-    completionInfo.wasAlreadyCompleted === false
-  );
-}
-
-async function ensureInvestorWalletReady(playerId, executor) {
+async function ensureTraderReady(playerId, executor) {
   await ensurePlayerExists(playerId, executor);
   await ensureWalletExists(playerId, executor);
 }
 
-async function getProjectOrThrow(projectId, executor) {
-  const project = await getProjectById(projectId, executor);
-  assertProjectExists(project);
-  assertProjectRow(project);
-  return project;
-}
-
-async function getActiveProjectOrThrow(projectId, executor) {
-  const project = await getProjectOrThrow(projectId, executor);
-  assertProjectStillInvestable(project);
-  return project;
-}
-
-async function subtractWalletOrThrow(playerId, amount, executor) {
-  const wallet = await subtractBalanceIfEnough(playerId, amount, executor);
-  if (!wallet) {
-    throw new InvestServiceError(investErrorCode.INSUFFICIENT_BALANCE, "insufficient balance");
+async function getStockOrThrow(stockId, executor) {
+  const stock = await findStockById(stockId, executor);
+  if (!stock) {
+    throw new InvestServiceError(investErrorCode.STOCK_NOT_FOUND, "stock not found");
   }
-  return wallet;
+  return stock;
 }
 
-function countUniqueContributors(contributions) {
-  const contributorSet = new Set();
+async function getStockForTradeOrThrow(stockId, executor) {
+  const stock = await findStockByIdForUpdate(stockId, executor);
+  if (!stock) {
+    throw new InvestServiceError(investErrorCode.STOCK_NOT_FOUND, "stock not found");
+  }
+  return stock;
+}
 
-  for (const contribution of contributions) {
-    assertContributionRow(contribution);
-    contributorSet.add(contribution.player_id);
+async function getWalletSnapshot(playerId, executor) {
+  await ensureTraderReady(playerId, executor);
+  const wallet = await findWalletByPlayerId(playerId, executor);
+  return mapWalletRow(wallet);
+}
+
+function buildTradeResult({
+  side,
+  stock,
+  quantity,
+  executedPrice,
+  totalPrice,
+  walletBalanceAfter,
+  holding,
+  realizedPnl = 0,
+}) {
+  return {
+    side,
+    stockId: stock.id,
+    stockName: stock.name,
+    quantity,
+    executedPrice,
+    totalPrice,
+    walletBalanceAfter,
+    realizedPnl,
+    holding,
+    stock: mapStockRow(stock, {
+      quantity: holding.quantity,
+      avg_buy_price: holding.avgBuyPrice,
+    }),
+  };
+}
+
+function calculateNextAverageBuyPrice({
+  currentQuantity,
+  currentAvgBuyPrice,
+  buyQuantity,
+  buyPrice,
+}) {
+  const nextQuantity = currentQuantity + buyQuantity;
+  if (nextQuantity <= 0) {
+    return 0;
   }
 
-  return contributorSet.size;
+  const weightedCost = currentQuantity * currentAvgBuyPrice + buyQuantity * buyPrice;
+  return Math.round(weightedCost / nextQuantity);
 }
 
-export async function createProject(payload) {
-  validateProjectInput(payload);
-
-  const row = await createProjectRow({
-    name: payload.name.trim(),
-    description: payload.description ?? null,
-    targetAmount: payload.targetAmount,
-    region: payload.region,
-    endsAt: payload.endsAt ?? null,
+function toHoldingPayload(position, currentPrice) {
+  return calculateEvaluation({
+    quantity: position?.quantity ?? 0,
+    avgBuyPrice: position?.avg_buy_price ?? 0,
+    currentPrice,
   });
+}
 
-  return buildProjectCreateResult(row);
+export async function listStocks({ playerId = null } = {}) {
+  if (playerId == null) {
+    const rows = await findAllStocks();
+    return {
+      stocks: rows.map((row) => mapStockRow(row)),
+    };
+  }
+
+  validatePlayerId(playerId);
+  await ensureTraderReady(playerId);
+  const rows = await listStocksWithPlayerPosition(playerId);
+  return {
+    stocks: rows.map((row) =>
+      mapStockRow(row, {
+        quantity: row.quantity,
+        avg_buy_price: row.avg_buy_price,
+      })
+    ),
+  };
+}
+
+export async function getStockDetail(stockId, { playerId = null } = {}) {
+  validateStockId(stockId);
+  const stock = await getStockOrThrow(stockId);
+
+  if (playerId == null) {
+    return {
+      stock: mapStockRow(stock),
+      wallet: null,
+    };
+  }
+
+  validatePlayerId(playerId);
+  await ensureTraderReady(playerId);
+  const [position, wallet] = await Promise.all([
+    findPlayerStockPosition(playerId, stockId),
+    getWalletSnapshot(playerId),
+  ]);
+
+  return {
+    stock: mapStockRow(stock, position),
+    wallet,
+  };
+}
+
+export async function buyStock({ playerId, stockId, quantity }) {
+  validatePlayerId(playerId);
+  validateStockId(stockId);
+  validateQuantity(quantity);
+
+  return withTransaction(async (client) => {
+    await ensureTraderReady(playerId, client);
+
+    const stock = await getStockForTradeOrThrow(stockId, client);
+    const executedPrice = toInt(stock.current_price, 0);
+    const totalPrice = ensureSafeTotal(executedPrice, quantity);
+
+    const walletAfter = await subtractBalanceIfEnough(playerId, totalPrice, client);
+    if (!walletAfter) {
+      throw new InvestServiceError(investErrorCode.INSUFFICIENT_BALANCE, "insufficient balance");
+    }
+
+    const currentPosition = await findPlayerStockPositionForUpdate(playerId, stockId, client);
+    const currentQuantity = Math.max(0, toInt(currentPosition?.quantity, 0));
+    const currentAvgBuyPrice = Math.max(0, toInt(currentPosition?.avg_buy_price, 0));
+    const nextQuantity = currentQuantity + quantity;
+    const nextAvgBuyPrice = calculateNextAverageBuyPrice({
+      currentQuantity,
+      currentAvgBuyPrice,
+      buyQuantity: quantity,
+      buyPrice: executedPrice,
+    });
+
+    const updatedPosition = await upsertPlayerStockPosition(
+      {
+        playerId,
+        stockId,
+        quantity: nextQuantity,
+        avgBuyPrice: nextAvgBuyPrice,
+      },
+      client
+    );
+
+    await insertLedgerEntry(
+      {
+        playerId,
+        type: "subtract",
+        amount: totalPrice,
+        reason: "invest_stock_buy",
+      },
+      client
+    );
+
+    const holding = toHoldingPayload(updatedPosition, executedPrice);
+    return buildTradeResult({
+      side: "buy",
+      stock,
+      quantity,
+      executedPrice,
+      totalPrice,
+      walletBalanceAfter: mapWalletRow(walletAfter).balance,
+      holding,
+      realizedPnl: 0,
+    });
+  });
+}
+
+export async function sellStock({ playerId, stockId, quantity }) {
+  validatePlayerId(playerId);
+  validateStockId(stockId);
+  validateQuantity(quantity);
+
+  return withTransaction(async (client) => {
+    await ensureTraderReady(playerId, client);
+
+    const stock = await getStockForTradeOrThrow(stockId, client);
+    const executedPrice = toInt(stock.current_price, 0);
+    const totalPrice = ensureSafeTotal(executedPrice, quantity);
+
+    const currentPosition = await findPlayerStockPositionForUpdate(playerId, stockId, client);
+    const currentQuantity = Math.max(0, toInt(currentPosition?.quantity, 0));
+    const currentAvgBuyPrice = Math.max(0, toInt(currentPosition?.avg_buy_price, 0));
+    if (currentQuantity < quantity) {
+      throw new InvestServiceError(
+        investErrorCode.INSUFFICIENT_QUANTITY,
+        "insufficient stock quantity"
+      );
+    }
+
+    const nextQuantity = currentQuantity - quantity;
+    const realizedPnl = (executedPrice - currentAvgBuyPrice) * quantity;
+
+    if (nextQuantity <= 0) {
+      await deletePlayerStockPosition(playerId, stockId, client);
+    } else {
+      await upsertPlayerStockPosition(
+        {
+          playerId,
+          stockId,
+          quantity: nextQuantity,
+          avgBuyPrice: currentAvgBuyPrice,
+        },
+        client
+      );
+    }
+
+    const walletAfter = await addBalance(playerId, totalPrice, client);
+    await insertLedgerEntry(
+      {
+        playerId,
+        type: "add",
+        amount: totalPrice,
+        reason: "invest_stock_sell",
+      },
+      client
+    );
+
+    const holding = calculateEvaluation({
+      quantity: nextQuantity,
+      avgBuyPrice: nextQuantity <= 0 ? 0 : currentAvgBuyPrice,
+      currentPrice: executedPrice,
+    });
+    return buildTradeResult({
+      side: "sell",
+      stock,
+      quantity,
+      executedPrice,
+      totalPrice,
+      walletBalanceAfter: mapWalletRow(walletAfter).balance,
+      holding,
+      realizedPnl,
+    });
+  });
+}
+
+// Legacy project-based APIs are intentionally kept but disabled.
+export async function createProject(_payload) {
+  throw new InvestServiceError(investErrorCode.SERVICE_DISABLED, LEGACY_DISABLED_MESSAGE);
 }
 
 export async function getProjects() {
-  const rows = await getActiveProjects();
-  return rows.map(buildInvestListItem);
+  return [];
 }
 
-export async function getProjectDetail(projectId) {
-  validateProjectId(projectId);
-
-  const row = await getProjectOrThrow(projectId);
-  const contributions = await getProjectContributions(projectId);
-  const contributors = countUniqueContributors(contributions);
-
-  return buildProjectDetailResult(row, contributors);
+export async function getProjectDetail(_projectId) {
+  throw new InvestServiceError(investErrorCode.SERVICE_DISABLED, LEGACY_DISABLED_MESSAGE);
 }
 
-export async function investToProject(projectId, { playerId, amount }) {
-  validateProjectId(projectId);
-  validatePlayerId(playerId);
-  validateAmount(amount);
-
-  return withTransaction(async (client) => {
-    await getActiveProjectOrThrow(projectId, client);
-    await ensureInvestorWalletReady(playerId, client);
-    await subtractWalletOrThrow(playerId, amount, client);
-
-    const ledgerEntry = buildInvestLedgerEntry({
-      playerId,
-      type: "subtract",
-      amount,
-      reason: INVEST_LEDGER_REASON,
-    });
-    await insertLedgerEntry(ledgerEntry, client);
-
-    const contributionPayload = buildContributionPayload({
-      projectId,
-      playerId,
-      amount,
-    });
-    await addContribution(contributionPayload, client);
-
-    const updatedProject = await increaseProjectAmount(projectId, amount, client);
-    const latestProjectFundingStatus = await getProjectProgressSnapshot(projectId, client);
-    const { completionInfo, activationResult } = await evaluateProjectCompletionAfterInvestment(
-      projectId,
-      latestProjectFundingStatus,
-      client
-    );
-    let completion = completionInfo;
-    let createdCompletionMail = false;
-
-    if (shouldCreateCompletionMail(completion)) {
-      const completionMail = await createProjectCompletionMail({
-        playerId,
-        projectId,
-        effectTarget: completion.effectTarget,
-        executor: client,
-      });
-      createdCompletionMail = completionMail.created;
-    }
-
-    let completionStatus = null;
-    if (completion.reachedTarget) {
-      completionStatus = await getProjectCompletionStatus(projectId, client);
-    }
-
-    completion = buildInvestmentCompletionInfo({
-      reachedTarget: completion.reachedTarget,
-      activationResult,
-      createdCompletionMail,
-      completionStatus,
-    });
-
-    const contributionAmount = await getPlayerContributionAmount(projectId, playerId, client);
-    const progress = buildInvestmentProgressInfo({
-      fundingStatus: latestProjectFundingStatus,
-      contributionAmount,
-    });
-
-    const projectTotal = latestProjectFundingStatus
-      ? Number(latestProjectFundingStatus.current_amount)
-      : updatedProject
-        ? normalizeProjectAmounts(updatedProject).currentAmount
-        : await getProjectTotal(projectId, client);
-
-    const investResult = buildInvestResult({
-      projectId,
-      amount,
-      projectTotal,
-    });
-    return {
-      ...investResult,
-      progress,
-      completion,
-    };
-  });
+export async function investToProject(_projectId, _payload) {
+  throw new InvestServiceError(investErrorCode.SERVICE_DISABLED, LEGACY_DISABLED_MESSAGE);
 }
 
-export async function getProjectProgress(projectId) {
-  validateProjectId(projectId);
-
-  const project = await getProjectOrThrow(projectId);
-  const fundingStatus = await getProjectProgressSnapshot(projectId);
-  const progress = buildInvestmentProgressInfo({
-    fundingStatus,
-    contributionAmount: null,
-  });
-
-  return {
-    projectId: project.id,
-    progress,
-  };
+export async function getProjectProgress(_projectId) {
+  throw new InvestServiceError(investErrorCode.SERVICE_DISABLED, LEGACY_DISABLED_MESSAGE);
 }
