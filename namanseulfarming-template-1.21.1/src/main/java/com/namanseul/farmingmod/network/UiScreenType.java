@@ -5,6 +5,7 @@ public enum UiScreenType {
     SHOP,
     MAIL,
     INVEST,
+    VILLAGE,
     STATUS,
     PLAYER;
 

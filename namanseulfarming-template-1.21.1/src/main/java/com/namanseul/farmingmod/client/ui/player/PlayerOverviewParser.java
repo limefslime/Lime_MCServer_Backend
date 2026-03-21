@@ -110,11 +110,11 @@ public final class PlayerOverviewParser {
 
         if ("shop".equals(category)) {
             return switch (action) {
-                case "buy" -> "Shop Purchase";
-                case "sell" -> "Shop Sale";
-                case "register" -> "Sell Listing Added";
-                case "cancel_sell" -> "Sell Listing Canceled";
-                default -> "Shop Activity";
+                case "buy" -> "Bought Item";
+                case "sell" -> "Sold Item";
+                case "register" -> "Listed Item";
+                case "cancel_sell" -> "Canceled Listing";
+                default -> "Market Action";
             };
         }
 
@@ -136,18 +136,21 @@ public final class PlayerOverviewParser {
         }
 
         String category = readString(item, "category", "").toLowerCase();
-        String source = readString(item, "source", "");
+        String itemName = readString(item, "itemName", "");
+        if (!itemName.isBlank()) {
+            return "Item: " + itemName;
+        }
 
         if ("shop".equals(category)) {
-            return "Market transaction";
+            return "Market action recorded.";
         }
         if ("invest".equals(category)) {
-            return "Investment transaction";
+            return "Project action recorded.";
         }
         if ("mail".equals(category)) {
-            return "Mailbox reward";
+            return "Reward added to account.";
         }
-        return source;
+        return "";
     }
 
     private static JsonObject parseRootObject(String json) {
