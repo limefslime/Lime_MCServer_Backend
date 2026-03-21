@@ -102,9 +102,9 @@ public final class ShopItemListPanel {
             String name = item.itemName() == null || item.itemName().isBlank() ? item.itemId() : item.itemName();
             int stock = Math.max(0, item.stockQuantity());
             if (item.playerListed()) {
-                name = "[L" + Math.max(1, item.listingQuantity()) + "/S" + stock + "] " + name;
+                name = name + " (listed " + Math.max(1, item.listingQuantity()) + ", stock " + stock + ")";
             } else {
-                name = "[S" + stock + "] " + name;
+                name = name + " (stock " + stock + ")";
             }
             int itemColumnEnd = x + width - 86;
             String clippedName = clipToWidth(font, name, Math.max(24, itemColumnEnd - (x + 24)));

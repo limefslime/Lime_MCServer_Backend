@@ -18,6 +18,8 @@ import com.namanseul.farmingmod.server.player.PlayerActivityTracker;
 import com.namanseul.farmingmod.server.player.PlayerOverviewUiService;
 import com.namanseul.farmingmod.server.status.BackendStatusBridge;
 import com.namanseul.farmingmod.server.status.StatusUiService;
+import com.namanseul.farmingmod.server.village.BackendVillageBridge;
+import com.namanseul.farmingmod.server.village.VillageUiService;
 import com.namanseul.farmingmod.server.shop.BackendShopBridge;
 import com.namanseul.farmingmod.server.shop.PlayerShopListingService;
 import com.namanseul.farmingmod.server.shop.ShopUiService;
@@ -58,6 +60,7 @@ public final class UiServerPayloadHandlers {
                 case SHOP -> handleShopRequest(payload, player);
                 case MAIL -> handleMailRequest(payload, player);
                 case INVEST -> handleInvestRequest(payload, player);
+                case VILLAGE -> handleVillageRequest(payload, player);
                 case STATUS -> handleStatusRequest(payload, player);
                 case PLAYER -> handlePlayerRequest(payload, player);
             }
@@ -102,6 +105,15 @@ public final class UiServerPayloadHandlers {
             ));
         } catch (BackendStatusBridge.StatusBridgeException | StatusUiService.StatusUiException ex) {
             NamanseulFarming.LOGGER.warn("[UI] Status bridge failed id={} action={} error={}",
+                    payload.requestId(), payload.action().serialized(), ex.getMessage());
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
+                    payload.requestId(),
+                    payload.screenType(),
+                    payload.action(),
+                    ex.getMessage()
+            ));
+        } catch (BackendVillageBridge.VillageBridgeException | VillageUiService.VillageUiException ex) {
+            NamanseulFarming.LOGGER.warn("[UI] Village bridge failed id={} action={} error={}",
                     payload.requestId(), payload.action().serialized(), ex.getMessage());
             PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
                     payload.requestId(),
@@ -392,6 +404,49 @@ public final class UiServerPayloadHandlers {
         if (Config.networkDebugLog()) {
             NamanseulFarming.LOGGER.info(
                     "[UI] S->C responseId={} success=true screen=invest action={}",
+                    payload.requestId(),
+                    payload.action().serialized()
+            );
+        }
+    }
+
+    private static void handleVillageRequest(UiRequestPayload payload, ServerPlayer player)
+            throws BackendVillageBridge.VillageBridgeException, VillageUiService.VillageUiException {
+        if (payload.action() == UiAction.OPEN) {
+            PacketDistributor.sendToPlayer(player, UiResponsePayload.openVillage(payload.requestId()));
+            return;
+        }
+
+        JsonObject requestPayload = parsePayloadObject(payload.payloadJson());
+        JsonElement result;
+        switch (payload.action()) {
+            case VILLAGE_OVERVIEW -> {
+                boolean forceRefresh = readBoolean(requestPayload, "forceRefresh");
+                result = VillageUiService.getOverview(player.getUUID(), forceRefresh);
+            }
+            case VILLAGE_REFRESH -> {
+                result = VillageUiService.getOverview(player.getUUID(), true);
+            }
+            case VILLAGE_DONATE -> {
+                int amount = readAmount(requestPayload);
+                result = VillageUiService.donate(player.getUUID(), amount);
+            }
+            default -> throw new IllegalArgumentException("unsupported village action");
+        }
+
+        PacketDistributor.sendToPlayer(
+                player,
+                UiResponsePayload.successJson(
+                        payload.requestId(),
+                        UiScreenType.VILLAGE,
+                        payload.action(),
+                        GSON.toJson(result)
+                )
+        );
+
+        if (Config.networkDebugLog()) {
+            NamanseulFarming.LOGGER.info(
+                    "[UI] S->C responseId={} success=true screen=village action={}",
                     payload.requestId(),
                     payload.action().serialized()
             );
