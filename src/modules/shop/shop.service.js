@@ -2,6 +2,7 @@
 import { getActiveEvents as getActiveEventRows } from "../event/event.repository.js";
 import { findCurrentFocusState } from "../focus/focus.repository.js";
 import { getActiveProjectEffects } from "../project-completion/projectCompletion.repository.js";
+import { getVillageShopEffect } from "../village/village.service.js";
 import {
   addBalance,
   ensurePlayerExists,
@@ -255,6 +256,7 @@ function normalizePricingContext(pricingContext) {
     currentFocusRegion: pricingContext?.currentFocusRegion ?? null,
     activeProjectEffects: pricingContext?.activeProjectEffects ?? [],
     activeEvents: pricingContext?.activeEvents ?? [],
+    villageEffect: pricingContext?.villageEffect ?? null,
   };
 }
 
@@ -263,6 +265,7 @@ function buildPricingContextWithModifiers(pricingContext) {
     currentFocusRegion: pricingContext?.currentFocusRegion ?? null,
     activeProjectEffects: pricingContext?.activeProjectEffects ?? [],
     activeEvents: pricingContext?.activeEvents ?? [],
+    villageEffect: pricingContext?.villageEffect ?? null,
     modifiers: pricingContext?.modifiers ?? null,
   };
 }
@@ -296,6 +299,14 @@ function buildDefaultModifierBreakdown() {
       multiplier: 1,
       regions: [],
     },
+    village: {
+      applied: false,
+      level: 1,
+      discountRate: 0,
+      buyMultiplier: 1,
+    },
+    totalBuyMultiplier: 1,
+    totalSellMultiplier: 1,
     totalMultiplier: 1,
   };
 }
@@ -327,6 +338,20 @@ function extractAppliedModifierSummary(modifiers) {
       multiplier: normalizeMultiplier(breakdown?.events?.multiplier),
       regions: Array.isArray(breakdown?.events?.regions) ? breakdown.events.regions : [],
     },
+    village: {
+      applied: Boolean(breakdown?.village?.applied),
+      level: Number.isInteger(breakdown?.village?.level) ? breakdown.village.level : 1,
+      discountRate: Number.isFinite(Number(breakdown?.village?.discountRate))
+        ? Number(breakdown.village.discountRate)
+        : 0,
+      buyMultiplier: normalizeMultiplier(breakdown?.village?.buyMultiplier),
+    },
+    totalBuyMultiplier: normalizeMultiplier(
+      breakdown?.totalBuyMultiplier ?? breakdown?.totalMultiplier
+    ),
+    totalSellMultiplier: normalizeMultiplier(
+      breakdown?.totalSellMultiplier ?? breakdown?.totalMultiplier
+    ),
     totalMultiplier: normalizeMultiplier(breakdown?.totalMultiplier),
   };
 }
@@ -338,7 +363,11 @@ function buildShopPriceBreakdown({ transactionType, modifiers }) {
     transactionType === "sell"
       ? normalizeMultiplier(modifiers?.sellPriceMultiplier)
       : normalizeMultiplier(modifiers?.buyPriceMultiplier);
-  const totalMultiplier = hasBreakdown ? summary.totalMultiplier : fallbackMultiplier;
+  const totalMultiplier = hasBreakdown
+    ? transactionType === "sell"
+      ? summary.totalSellMultiplier
+      : summary.totalBuyMultiplier
+    : fallbackMultiplier;
 
   return {
     totalMultiplier,
@@ -358,6 +387,12 @@ function buildShopPriceBreakdown({ transactionType, modifiers }) {
         count: summary.events.count,
         multiplier: summary.events.multiplier,
       },
+      village: {
+        applied: summary.village.applied,
+        level: summary.village.level,
+        discountRate: summary.village.discountRate,
+        buyMultiplier: summary.village.buyMultiplier,
+      },
     },
   };
 }
@@ -373,6 +408,9 @@ function buildPricingReasonTags(modifierSummary, hasFee) {
   }
   if (modifierSummary?.events?.applied) {
     tags.push("event");
+  }
+  if (modifierSummary?.village?.applied) {
+    tags.push("village");
   }
   if (hasFee) {
     tags.push("fee");
@@ -399,6 +437,10 @@ function buildPricingSummaryText(modifierSummary, hasFee) {
   if (modifierSummary?.events?.applied) {
     const count = Number(modifierSummary?.events?.count) || 0;
     parts.push(`이벤트 보정 ${count}개`);
+  }
+  if (modifierSummary?.village?.applied) {
+    const level = Number(modifierSummary?.village?.level) || 1;
+    parts.push(`마을 기금 할인(Lv.${level})`);
   }
   if (hasFee) {
     parts.push("거래 수수료");
@@ -798,16 +840,18 @@ async function getCurrentActiveEvents(executor) {
 }
 
 async function getShopPricingContext(executor, itemCategory) {
-  const [currentFocusRegion, activeProjectEffects, activeEvents] = await Promise.all([
+  const [currentFocusRegion, activeProjectEffects, activeEvents, villageEffect] = await Promise.all([
     getCurrentFocusRegion(executor),
     getCurrentActiveProjectEffects(executor),
     getCurrentActiveEvents(executor),
+    getVillageShopEffect(executor),
   ]);
 
   const modifiers = calculateShopModifiers({
     activeEvents,
     focusState: currentFocusRegion,
     projectEffects: activeProjectEffects,
+    villageEffect,
     itemCategory,
   });
 
@@ -815,6 +859,7 @@ async function getShopPricingContext(executor, itemCategory) {
     currentFocusRegion,
     activeProjectEffects,
     activeEvents,
+    villageEffect,
     modifiers,
   };
 }
