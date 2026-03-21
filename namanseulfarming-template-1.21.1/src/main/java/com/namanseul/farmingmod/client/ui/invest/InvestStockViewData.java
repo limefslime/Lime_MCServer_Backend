@@ -20,7 +20,7 @@ public record InvestStockViewData(
         } else if (changeAmount < 0) {
             changeText = Integer.toString(changeAmount);
         } else {
-            changeText = "0";
+            changeText = "- 0";
         }
         return name + "  " + currentPrice + "  " + changeText;
     }

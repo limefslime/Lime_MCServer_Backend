@@ -277,7 +277,6 @@ public final class InvestScreen extends BaseGameScreen {
     private void renderDetailPanel(GuiGraphics graphics) {
         int x = detailX + 8;
         int y = detailY + 22;
-        int lineGap = 12;
 
         if (selectedStock == null) {
             graphics.drawString(font, Component.literal("Select a stock."), x, y, 0xC7D7F1, false);
@@ -285,53 +284,72 @@ public final class InvestScreen extends BaseGameScreen {
         }
 
         graphics.drawString(font, Component.literal(selectedStock.name()), x, y, 0xFFFFFF, false);
-        y += lineGap;
-        graphics.drawString(font, Component.literal("Current: " + selectedStock.currentPrice()), x, y, 0xEAF1FF, false);
-        y += lineGap;
-        graphics.drawString(font, Component.literal("Holding: " + selectedStock.holdingQuantity()), x, y, 0xEAF1FF, false);
-        y += lineGap;
-        graphics.drawString(font, Component.literal("Avg Buy: " + selectedStock.avgBuyPrice()), x, y, 0xEAF1FF, false);
-        y += lineGap;
-        String pnlPrefix = selectedStock.unrealizedPnl() > 0 ? "+" : selectedStock.unrealizedPnl() < 0 ? "-" : "";
-        int pnlAbs = Math.abs(selectedStock.unrealizedPnl());
+        int dividerY = y + 10;
+        graphics.fill(x, dividerY, x + detailWidth - 20, dividerY + 1, 0xAA5F769A);
+
+        y += 18;
+        graphics.drawString(font, Component.literal("Current: " + formatAmount(selectedStock.currentPrice())), x, y, 0xEAF1FF, false);
+        y += 13;
+        graphics.drawString(font, Component.literal("Holding: " + formatAmount(selectedStock.holdingQuantity())), x, y, 0xEAF1FF, false);
+        y += 13;
+        graphics.drawString(font, Component.literal("Avg Buy: " + formatAmount(selectedStock.avgBuyPrice())), x, y, 0xEAF1FF, false);
+        y += 17;
+
+        int pnlValue = selectedStock.unrealizedPnl();
+        String pnlPrefix = pnlValue >= 0 ? "+" : "-";
+        int pnlAbs = Math.abs(pnlValue);
+        int pnlColor = pnlValue > 0 ? 0x91F7A2 : pnlValue < 0 ? 0xF7A4A4 : 0xEAF1FF;
         graphics.drawString(
                 font,
-                Component.literal("PnL: " + pnlPrefix + pnlAbs),
+                Component.literal("PnL: " + pnlPrefix + formatAmount(pnlAbs)),
                 x,
                 y,
-                selectedStock.unrealizedPnl() >= 0 ? 0x91F7A2 : 0xF7A4A4,
+                pnlColor,
                 false
         );
     }
 
     private void renderActionPanel(GuiGraphics graphics) {
-        int x = actionX + 10;
+        int labelX = actionX + 10;
+        int valueX = labelX + 40;
         int y = actionY + 50;
 
         Integer quantity = validateQuantityInput();
-        String buySellText = "Buy: - / Sell: -";
-        String totalText = "Total: - (fee: -)";
+        String buyValue = "-";
+        String sellValue = "-";
+        String totalValue = "-";
         if (quantity != null && selectedStock != null) {
             int feeAmount = estimateFeeAmount(quantity);
             long buyTotal = estimateBuyTotal(quantity);
             long sellTotal = estimateSellTotal(quantity);
-            buySellText = "Buy: " + buyTotal + " / Sell: " + sellTotal;
-            totalText = "Total: " + calculateTotalPrice(quantity) + " (fee: " + feeAmount + ")";
+            buyValue = formatAmount(buyTotal);
+            sellValue = formatAmount(sellTotal);
+            totalValue = formatAmount(calculateTotalPrice(quantity));
+            if (feeAmount > 0) {
+                totalValue = totalValue + " (fee: " + formatAmount(feeAmount) + ")";
+            }
         }
 
-        graphics.drawString(font, Component.literal(buySellText), x, y, 0xEAF1FF, false);
+        graphics.drawString(font, Component.literal("Buy:"), labelX, y, 0xC7D7F1, false);
+        graphics.drawString(font, Component.literal(buyValue), valueX, y, 0xEAF1FF, false);
         y += 12;
-        graphics.drawString(font, Component.literal(totalText), x, y, 0xEAF1FF, false);
+        graphics.drawString(font, Component.literal("Sell:"), labelX, y, 0xC7D7F1, false);
+        graphics.drawString(font, Component.literal(sellValue), valueX, y, 0xEAF1FF, false);
+
+        y += 16;
+        graphics.drawString(font, Component.literal("Total:"), labelX, y, 0xC7D7F1, false);
+        graphics.drawString(font, Component.literal(totalValue), valueX, y, 0xEAF1FF, false);
         y += 12;
-        graphics.drawString(font, Component.literal("Wallet: " + walletBalance), x, y, 0xDDE6F9, false);
+        graphics.drawString(font, Component.literal("Wallet:"), labelX, y, 0xC7D7F1, false);
+        graphics.drawString(font, Component.literal(formatAmount(walletBalance)), valueX, y, 0xDDE6F9, false);
 
         if (inputError != null && !inputError.isBlank()) {
             y += 14;
-            graphics.drawString(font, Component.literal(inputError), x, y, 0xFF8E8E, false);
+            graphics.drawString(font, Component.literal(inputError), labelX, y, 0xFF8E8E, false);
         }
         if (statusMessage != null && !statusMessage.isBlank()) {
             y += 14;
-            graphics.drawString(font, Component.literal(statusMessage), x, y, 0xDDE6F9, false);
+            graphics.drawString(font, Component.literal(statusMessage), labelX, y, 0xDDE6F9, false);
         }
     }
 
@@ -372,7 +390,6 @@ public final class InvestScreen extends BaseGameScreen {
 
         tradeLoading = true;
         inputError = null;
-        statusMessage = null;
         if (buy) {
             pendingBuyRequestId = UiClientNetworking.requestInvestBuy(selectedStock.stockId(), quantity);
         } else {
@@ -390,7 +407,10 @@ public final class InvestScreen extends BaseGameScreen {
         setLoading(false);
 
         if (!payload.success()) {
-            setError("Failed to load stocks.");
+            String errorMessage = payload.error() != null && !payload.error().isBlank()
+                    ? payload.error()
+                    : "Failed to load stocks.";
+            setError(errorMessage);
             stocks.clear();
             selectedStock = null;
             detailReady = false;
@@ -427,7 +447,10 @@ public final class InvestScreen extends BaseGameScreen {
 
         if (!payload.success()) {
             detailReady = false;
-            setError("Failed to load stock.");
+            String errorMessage = payload.error() != null && !payload.error().isBlank()
+                    ? payload.error()
+                    : "Failed to load stock.";
+            setError(errorMessage);
             updateActionButtons();
             return;
         }
@@ -509,7 +532,6 @@ public final class InvestScreen extends BaseGameScreen {
         }
         int selectedIndex = Math.max(0, Math.min(stockListPanel.selectedIndex(), stocks.size() - 1));
         selectedStock = stocks.get(selectedIndex);
-        statusMessage = null;
         requestStockDetail(selectedStock.stockId(), false);
         updateActionButtons();
     }
@@ -573,7 +595,6 @@ public final class InvestScreen extends BaseGameScreen {
 
     private void onQuantityChanged() {
         validateQuantityInput();
-        statusMessage = null;
         updateActionButtons();
     }
 
@@ -624,6 +645,9 @@ public final class InvestScreen extends BaseGameScreen {
     }
 
     private String resolveTradeErrorMessage(boolean isBuyLike, @Nullable String rawError) {
+        if (rawError != null && !rawError.isBlank()) {
+            return rawError;
+        }
         String normalized = rawError == null ? "" : rawError.toLowerCase();
         if (normalized.contains("balance")) {
             return "Not enough balance";
@@ -632,6 +656,10 @@ public final class InvestScreen extends BaseGameScreen {
             return "Not enough shares";
         }
         return isBuyLike ? "Not enough balance" : "Not enough shares";
+    }
+
+    private String formatAmount(long value) {
+        return String.format("%,d", value);
     }
 
     private boolean canBuy(int quantity) {
