@@ -1,5 +1,6 @@
 package com.namanseul.farmingmod.client.ui.mail;
 
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
@@ -19,19 +20,21 @@ public final class MailDetailPanelView {
             int height,
             @Nullable MailViewData mail
     ) {
-        List<Component> lines = buildLines(font, width - 12, mail);
+        List<Component> lines = buildLines(mail);
         int lineY = y + 4;
         int maxY = y + height - 10;
+        int contentX = x + 6;
+        int contentWidth = Math.max(0, width - 12);
         for (Component line : lines) {
             if (lineY > maxY) {
                 break;
             }
-            graphics.drawString(font, line, x + 6, lineY, 0xEAF1FF, false);
+            drawStructuredLine(graphics, font, line.getString(), contentX, lineY, contentWidth);
             lineY += 12;
         }
     }
 
-    private static List<Component> buildLines(Font font, int contentWidth, @Nullable MailViewData mail) {
+    private static List<Component> buildLines(@Nullable MailViewData mail) {
         List<Component> lines = new ArrayList<>();
         if (mail == null) {
             lines.add(Component.translatable("screen.namanseulfarming.mail.no_selection"));
@@ -54,31 +57,22 @@ public final class MailDetailPanelView {
                     + " x" + numberOrDash(mail.itemRewardQuantity())));
         }
 
-        lines.add(Component.literal("message:"));
-        lines.addAll(wrapText(font, safe(mail.message()), Math.max(60, contentWidth)));
+        lines.add(Component.literal("message: " + safe(mail.message())));
         return lines;
     }
 
-    private static List<Component> wrapText(Font font, String value, int maxWidth) {
-        List<Component> lines = new ArrayList<>();
-        if (value == null || value.isBlank()) {
-            lines.add(Component.literal("-"));
-            return lines;
-        }
-
-        String remaining = value;
-        while (!remaining.isEmpty()) {
-            String part = font.plainSubstrByWidth(remaining, maxWidth);
-            if (part.isEmpty()) {
-                break;
+    private static void drawStructuredLine(GuiGraphics graphics, Font font, String line, int x, int y, int width) {
+        int colon = line.indexOf(':');
+        if (colon > 0 && colon < line.length() - 1) {
+            String label = line.substring(0, colon + 1).trim();
+            String value = line.substring(colon + 1).trim();
+            if (!value.isBlank() && label.length() <= 20) {
+                int labelWidth = Math.max(52, Math.min(116, width / 2));
+                UiTextRender.drawLabelValue(graphics, font, label, value, x, y, width, labelWidth, 0xC7D7F1, 0xEAF1FF);
+                return;
             }
-            lines.add(Component.literal(part));
-            remaining = remaining.substring(part.length());
         }
-        if (lines.isEmpty()) {
-            lines.add(Component.literal(value));
-        }
-        return lines;
+        UiTextRender.drawEllipsized(graphics, font, line, x, y, width, 0xEAF1FF);
     }
 
     private static String safe(String value) {
