@@ -5,16 +5,14 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.namanseul.farmingmod.client.network.UiClientNetworking;
 import com.namanseul.farmingmod.client.ui.shop.ShopActionPanelView;
-import com.namanseul.farmingmod.client.ui.shop.ShopDetailPanelView;
 import com.namanseul.farmingmod.client.ui.shop.ShopItemViewData;
 import com.namanseul.farmingmod.client.ui.shop.ShopJsonParser;
 import com.namanseul.farmingmod.client.ui.shop.ShopItemListPanel;
-import com.namanseul.farmingmod.client.ui.shop.ShopPreviewPanelView;
 import com.namanseul.farmingmod.client.ui.shop.ShopPreviewViewData;
 import com.namanseul.farmingmod.client.ui.shop.ShopTradeViewData;
+import com.namanseul.farmingmod.client.ui.widget.BalanceHudState;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
-import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
 import com.namanseul.farmingmod.network.UiAction;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import java.util.ArrayList;
@@ -31,6 +29,12 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 public final class ShopScreen extends BaseGameScreen {
+    private static final String MSG_SELECT_ITEM = "Select an item first.";
+    private static final String MSG_INVALID_QUANTITY = "Enter a quantity of 1 or more.";
+    private static final String MSG_PREVIEW_PENDING = "Price check is in progress.";
+    private static final String MSG_SELECT_LISTED_ITEM = "Select your listed item first.";
+    private static final String MSG_INVALID_INVENTORY_ITEM = "Could not read the selected inventory item.";
+
     private final Screen returnScreen;
     private final List<ShopItemViewData> items = new ArrayList<>();
     private final List<InventoryChoice> inventoryChoices = new ArrayList<>();
@@ -80,16 +84,6 @@ public final class ShopScreen extends BaseGameScreen {
     private int listWidth;
     private int listHeight;
 
-    private int detailX;
-    private int detailY;
-    private int detailWidth;
-    private int detailHeight;
-
-    private int previewX;
-    private int previewY;
-    private int previewWidth;
-    private int previewHeight;
-
     private int actionX;
     private int actionY;
     private int actionWidth;
@@ -126,7 +120,7 @@ public final class ShopScreen extends BaseGameScreen {
             closeButton.setMessage(Component.translatable("screen.namanseulfarming.shop.back"));
         }
 
-        itemListPanel = new ShopItemListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
+        itemListPanel = new ShopItemListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22, 20);
         initActionWidgets();
         initInventoryPickerWidgets();
         requestItemList(false);
@@ -163,28 +157,6 @@ public final class ShopScreen extends BaseGameScreen {
             itemListPanel.render(graphics, font, mouseX, mouseY);
         }
 
-        renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.shop.detail"), detailX + 6, detailY + 6);
-        renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () ->
-                ShopDetailPanelView.render(graphics, font, detailX + 2, detailY + 18, detailWidth - 4, detailHeight - 20, selectedItem)
-        );
-
-        renderPanel(graphics, previewX, previewY, previewWidth, previewHeight);
-        renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.shop.preview"), previewX + 6, previewY + 6);
-        renderClipped(graphics, previewX, previewY, previewWidth, previewHeight, () ->
-                ShopPreviewPanelView.render(
-                        graphics,
-                        font,
-                        previewX + 2,
-                        previewY + 18,
-                        previewWidth - 4,
-                        previewHeight - 20,
-                        buyPreview,
-                        sellPreview,
-                        lastTrade
-                )
-        );
-
         renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
         renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.shop.actions"), actionX + 6, actionY + 6);
         renderClipped(graphics, actionX, actionY, actionWidth, actionHeight, () ->
@@ -193,6 +165,12 @@ public final class ShopScreen extends BaseGameScreen {
                         font,
                         actionX + 8,
                         actionY + 20,
+                        actionWidth - 16,
+                        actionHeight - 24,
+                        selectedItem,
+                        buyPreview,
+                        sellPreview,
+                        lastTrade,
                         quantityError,
                         statusMessage,
                         previewLoading,
@@ -214,11 +192,37 @@ public final class ShopScreen extends BaseGameScreen {
             return super.mouseClicked(mouseX, mouseY, button);
         }
 
-        if (itemListPanel != null && itemListPanel.mouseClicked(mouseX, mouseY, button)) {
-            onSelectedIndexChanged();
-            return true;
+        if (itemListPanel != null) {
+            int selectedBefore = itemListPanel.selectedIndex();
+            if (itemListPanel.mouseClicked(mouseX, mouseY, button)) {
+                if (selectedBefore != itemListPanel.selectedIndex()) {
+                    onSelectedIndexChanged();
+                }
+                return true;
+            }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (!inventoryPickerVisible
+                && button == 0
+                && itemListPanel != null
+                && itemListPanel.mouseDragged(mouseX, mouseY)) {
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (!inventoryPickerVisible
+                && itemListPanel != null
+                && itemListPanel.mouseReleased(button)) {
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
@@ -404,7 +408,7 @@ public final class ShopScreen extends BaseGameScreen {
         }
 
         setError(null);
-        statusMessage = "loading buy/sell preview...";
+        statusMessage = null;
         pendingPreviewBuyRequestId = UiClientNetworking.requestShopPreviewBuy(selectedItem.itemId(), quantity);
         pendingPreviewSellRequestId = UiClientNetworking.requestShopPreviewSell(selectedItem.itemId(), quantity);
         previewLoading = true;
@@ -413,18 +417,18 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestTrade(boolean buy) {
         if (selectedItem == null) {
-            showWarning("select an item first");
+            showActionHint(MSG_SELECT_ITEM);
             return;
         }
 
         Integer quantity = validatedQuantity();
         if (quantity == null) {
-            showWarning("quantity must be a positive integer");
+            showActionHint(MSG_INVALID_QUANTITY);
             return;
         }
 
         if (!hasMatchingPreview(buy ? "buy" : "sell", quantity)) {
-            showWarning(previewLoading ? "preview is loading..." : "preview is not ready yet");
+            showActionHint(MSG_PREVIEW_PENDING);
             return;
         }
 
@@ -439,12 +443,12 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestRegisterItem(InventoryChoice choice) {
         if (choice == null || choice.itemKey() == null || choice.itemKey().isBlank()) {
-            showWarning("invalid inventory item");
+            showActionHint(MSG_INVALID_INVENTORY_ITEM);
             return;
         }
         Integer quantity = validatedQuantity();
         if (quantity == null) {
-            showWarning("quantity must be a positive integer");
+            showActionHint(MSG_INVALID_QUANTITY);
             return;
         }
         if (listingActionLoading) {
@@ -453,7 +457,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = true;
         setError(null);
-        statusMessage = "registering item...";
+        statusMessage = "Registering item...";
         pendingRegisterRequestId = UiClientNetworking.requestShopRegister(
                 choice.itemKey(),
                 choice.stack().getDisplayName().getString(),
@@ -465,7 +469,7 @@ public final class ShopScreen extends BaseGameScreen {
 
     private void requestCancelSell() {
         if (selectedItem == null || !selectedItem.playerListed()) {
-            showWarning("select a registered item first");
+            showActionHint(MSG_SELECT_LISTED_ITEM);
             return;
         }
         if (listingActionLoading) {
@@ -474,7 +478,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = true;
         setError(null);
-        statusMessage = "canceling listing...";
+        statusMessage = "Canceling listing...";
         pendingCancelSellRequestId = UiClientNetworking.requestShopCancelSell(selectedItem.itemId());
         updateActionButtons();
     }
@@ -524,7 +528,7 @@ public final class ShopScreen extends BaseGameScreen {
         setMainWidgetsVisible(false);
         inventoryPickerVisible = true;
         if (inventoryChoices.isEmpty()) {
-            showWarning("inventory has no items");
+            showActionHint("No items available in your inventory.");
         }
         updateActionButtons();
     }
@@ -648,26 +652,26 @@ public final class ShopScreen extends BaseGameScreen {
     @Nullable
     private Integer validatedQuantity() {
         if (quantityInput == null) {
-            quantityError = "quantity input is unavailable";
+            quantityError = "Quantity input is unavailable.";
             return null;
         }
 
         String raw = quantityInput.getValue();
         if (raw == null || raw.isBlank()) {
-            quantityError = "enter quantity";
+            quantityError = "Enter quantity.";
             return null;
         }
 
         try {
             int quantity = Integer.parseInt(raw);
             if (quantity <= 0) {
-                quantityError = "quantity must be >= 1";
+                quantityError = "Quantity must be 1 or more.";
                 return null;
             }
             quantityError = null;
             return quantity;
         } catch (NumberFormatException ex) {
-            quantityError = "quantity must be numeric";
+            quantityError = "Quantity must be a number.";
             return null;
         }
     }
@@ -701,9 +705,7 @@ public final class ShopScreen extends BaseGameScreen {
             items.clear();
             selectedItem = null;
             clearPreviews();
-            setError(payload.error() == null ? "shop list request failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.shop.banner.list_failed")));
+            showFailure("Could not load shop items.");
             updateListEntries();
             updateActionButtons();
             return;
@@ -715,18 +717,15 @@ public final class ShopScreen extends BaseGameScreen {
             items.clear();
             items.addAll(fetchedItems);
             setError(null);
+            statusMessage = null;
             updateListEntries();
             restoreOrSelectFirst(previousItemId);
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.shop.banner.list_loaded")));
         } catch (Exception ex) {
             items.clear();
             selectedItem = null;
             clearPreviews();
             updateListEntries();
-            setError("failed to parse shop list response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.translatable("screen.namanseulfarming.shop.banner.list_failed")));
+            showFailure("Could not read shop items.");
         }
 
         updateActionButtons();
@@ -739,8 +738,7 @@ public final class ShopScreen extends BaseGameScreen {
         pendingDetailRequestId = null;
 
         if (!payload.success()) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal(payload.error() == null ? "item detail request failed" : payload.error())));
+            showFailure("Could not load selected item.");
             return;
         }
 
@@ -750,9 +748,9 @@ public final class ShopScreen extends BaseGameScreen {
             selectedItem = detail;
             updateListEntries();
             updateSelectionByItemId(detail.itemId());
+            setError(null);
         } catch (Exception ex) {
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal("failed to parse item detail")));
+            showFailure("Could not read selected item.");
         }
     }
 
@@ -770,9 +768,7 @@ public final class ShopScreen extends BaseGameScreen {
         previewLoading = pendingPreviewBuyRequestId != null || pendingPreviewSellRequestId != null;
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "preview failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Preview failed." : payload.error())));
+            showFailure("Could not check price.");
             updateActionButtons();
             return;
         }
@@ -784,16 +780,15 @@ public final class ShopScreen extends BaseGameScreen {
             } else {
                 sellPreview = preview;
             }
-            statusMessage = previewLoading ? "loading buy/sell preview..." : "preview ready";
-            setError(null);
-            if (!previewLoading) {
-                setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                        Component.translatable("screen.namanseulfarming.shop.banner.preview_ready")));
+            if (preview.balanceAfterPreview() != null) {
+                BalanceHudState.setBalance(preview.balanceAfterPreview());
+            } else if (preview.balanceBefore() != null) {
+                BalanceHudState.setBalance(preview.balanceBefore());
             }
+            statusMessage = null;
+            setError(null);
         } catch (Exception ex) {
-            setError("failed to parse preview response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal("Failed to parse preview result")));
+            showFailure("Could not read price quote.");
         }
         updateActionButtons();
     }
@@ -806,9 +801,7 @@ public final class ShopScreen extends BaseGameScreen {
         tradeLoading = false;
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "trade failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Trade failed." : payload.error())));
+            showFailure("Trade failed. Please try again.");
             updateActionButtons();
             return;
         }
@@ -817,15 +810,14 @@ public final class ShopScreen extends BaseGameScreen {
 
         try {
             lastTrade = ShopJsonParser.parseTrade(payload.dataJson(), transactionType);
-            statusMessage = transactionType + " success";
+            if (lastTrade.balanceAfter() != null) {
+                BalanceHudState.setBalance(lastTrade.balanceAfter());
+            }
+            statusMessage = "buy".equals(transactionType) ? "Purchase completed." : "Sale completed.";
             setError(null);
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.translatable("screen.namanseulfarming.shop.banner.trade_success", transactionType)));
             requestItemList(true);
         } catch (Exception ex) {
-            setError("failed to parse trade response");
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal("Failed to parse trade result")));
+            showFailure("Trade completed, but confirmation could not be read.");
         }
         updateActionButtons();
     }
@@ -847,22 +839,16 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = false;
         if (!payload.success()) {
-            setError(payload.error() == null ? "listing action failed" : payload.error());
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Listing action failed." : payload.error())));
+            showFailure("Could not update listing.");
             updateActionButtons();
             return;
         }
 
         if (payload.action() == UiAction.SHOP_REGISTER) {
-            statusMessage = "item registered to sell list";
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.literal("Item registered. Inventory quantity reduced.")));
+            statusMessage = "Item listed for sale.";
             tryApplyListingFromActionResponse(payload.dataJson());
         } else {
-            statusMessage = "listing canceled (item sent to mail)";
-            setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
-                    Component.literal("Sell canceled. Item was sent to your mail.")));
+            statusMessage = "Listing canceled.";
         }
         requestItemList(true);
         updateActionButtons();
@@ -923,8 +909,14 @@ public final class ShopScreen extends BaseGameScreen {
         items.add(item);
     }
 
-    private void showWarning(String message) {
-        setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING, Component.literal(message)));
+    private void showActionHint(String message) {
+        statusMessage = message;
+        setError(null);
+    }
+
+    private void showFailure(String message) {
+        statusMessage = null;
+        setError(message);
     }
 
     private void tryApplyListingFromActionResponse(@Nullable String dataJson) {
@@ -955,18 +947,20 @@ public final class ShopScreen extends BaseGameScreen {
         boolean hasItem = selectedItem != null;
         boolean validQuantity = quantity != null;
         boolean playerListedItem = selectedItem != null && selectedItem.playerListed();
-        boolean busy = listLoading || previewLoading || tradeLoading || listingActionLoading || inventoryPickerVisible;
+        boolean busy = listLoading || tradeLoading || listingActionLoading || inventoryPickerVisible;
 
         if (buyButton != null) {
             buyButton.active = hasItem
                     && validQuantity
                     && !busy
+                    && !previewLoading
                     && hasMatchingPreview("buy", quantity == null ? -1 : quantity);
         }
         if (sellButton != null) {
             sellButton.active = hasItem
                     && validQuantity
                     && !busy
+                    && !previewLoading
                     && hasMatchingPreview("sell", quantity == null ? -1 : quantity);
         }
         if (registerItemButton != null) {
@@ -1001,73 +995,70 @@ public final class ShopScreen extends BaseGameScreen {
         }
 
         int contentLeft = actionX + 8;
-        int contentRight = actionX + actionWidth - 8;
-        int rowOneY = actionY + 16;
-        int rowTwoY = Math.min(
-                actionY + actionHeight - 22,
-                Math.max(rowOneY + 22, actionY + 40)
-        );
+        int contentWidth = Math.max(132, actionWidth - 16);
+        int controlsTop = Math.max(actionY + 88, actionY + actionHeight - 52);
+        int quantityRowY = controlsTop;
+        int buttonRowY = controlsTop + 24;
 
         int quickGap = 3;
-        int quickZoneWidth = clampInt(actionWidth / 2, 66, 102);
-        int quickStartX = contentRight - quickZoneWidth;
+        int quickZoneWidth = clampInt(contentWidth / 2, 72, 108);
         int quickWidth = Math.max(18, (quickZoneWidth - quickGap * 2) / 3);
+        int quickStartX = contentLeft + contentWidth - quickZoneWidth;
 
-        int inputX = contentLeft + 58;
+        int inputX = contentLeft;
         int inputWidth = quickStartX - quickGap - inputX;
-        if (inputWidth < 36) {
-            inputWidth = 36;
-            inputX = Math.max(contentLeft + 34, quickStartX - quickGap - inputWidth);
+        if (inputWidth < 44) {
+            inputWidth = 44;
         }
 
-        quantityInput.setPosition(inputX, rowOneY + 2);
+        quantityInput.setPosition(inputX, quantityRowY + 2);
         quantityInput.setWidth(Math.max(34, inputWidth));
 
         if (quantityOneButton != null) {
-            quantityOneButton.setPosition(quickStartX, rowOneY);
+            quantityOneButton.setPosition(quickStartX, quantityRowY);
             quantityOneButton.setWidth(quickWidth);
         }
         if (quantityTenButton != null) {
-            quantityTenButton.setPosition(quickStartX + quickWidth + quickGap, rowOneY);
+            quantityTenButton.setPosition(quickStartX + quickWidth + quickGap, quantityRowY);
             quantityTenButton.setWidth(quickWidth);
         }
         if (quantityStackButton != null) {
-            quantityStackButton.setPosition(quickStartX + (quickWidth + quickGap) * 2, rowOneY);
+            quantityStackButton.setPosition(quickStartX + (quickWidth + quickGap) * 2, quantityRowY);
             quantityStackButton.setWidth(quickWidth);
         }
 
         int gap = 4;
-        int availableWidth = actionWidth - 16 - gap * 3;
-        int buttonWidth = Math.max(22, availableWidth / 4);
+        int availableWidth = contentWidth - gap * 3;
+        int buttonWidth = Math.max(28, availableWidth / 4);
         int startX = contentLeft;
 
         if (registerItemButton != null) {
-            registerItemButton.setPosition(startX, rowTwoY);
+            registerItemButton.setPosition(startX, buttonRowY);
             registerItemButton.setWidth(buttonWidth);
         }
         if (buyButton != null) {
-            buyButton.setPosition(startX + (buttonWidth + gap), rowTwoY);
+            buyButton.setPosition(startX + (buttonWidth + gap), buttonRowY);
             buyButton.setWidth(buttonWidth);
         }
         if (sellButton != null) {
-            sellButton.setPosition(startX + (buttonWidth + gap) * 2, rowTwoY);
+            sellButton.setPosition(startX + (buttonWidth + gap) * 2, buttonRowY);
             sellButton.setWidth(buttonWidth);
         }
         if (cancelSellButton != null) {
-            cancelSellButton.setPosition(startX + (buttonWidth + gap) * 3, rowTwoY);
+            cancelSellButton.setPosition(startX + (buttonWidth + gap) * 3, buttonRowY);
             cancelSellButton.setWidth(buttonWidth);
         }
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(560, width - 20);
-        frameHeight = Math.min(360, height - 36);
+        frameWidth = Math.min(640, width - 20);
+        frameHeight = Math.min(372, height - 30);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 
         int innerWidth = frameWidth - 20;
-        int minRightWidth = 170;
-        int preferredListWidth = clampInt(innerWidth * 38 / 100, 118, 210);
+        int minRightWidth = 188;
+        int preferredListWidth = clampInt(innerWidth * 52 / 100, 172, 332);
         if (innerWidth - preferredListWidth - 8 < minRightWidth) {
             preferredListWidth = Math.max(96, innerWidth - minRightWidth - 8);
         }
@@ -1075,45 +1066,16 @@ public final class ShopScreen extends BaseGameScreen {
         listX = frameX + 10;
         listY = frameY + 34;
         listWidth = Math.max(96, preferredListWidth);
-        detailWidth = Math.max(96, innerWidth - listWidth - 8);
+        actionWidth = Math.max(96, innerWidth - listWidth - 8);
 
         int contentTop = listY;
         int contentBottom = frameY + frameHeight - 10;
-        int rightAvailableHeight = Math.max(120, contentBottom - contentTop);
-        listHeight = Math.max(64, rightAvailableHeight);
+        int contentHeight = Math.max(120, contentBottom - contentTop);
+        listHeight = Math.max(64, contentHeight);
 
-        detailX = listX + listWidth + 8;
-        detailY = contentTop;
-        actionWidth = detailWidth;
-        previewWidth = detailWidth;
-
-        int gap = 6;
-        int minDetail = 52;
-        int minPreview = 48;
-        int minAction = 64;
-        actionHeight = clampInt(rightAvailableHeight / 3, minAction, 92);
-        previewHeight = clampInt(rightAvailableHeight / 3, minPreview, 86);
-        int detailCandidate = rightAvailableHeight - actionHeight - previewHeight - gap * 2;
-        if (detailCandidate < minDetail) {
-            int deficit = minDetail - detailCandidate;
-            int reducePreview = Math.min(deficit, previewHeight - minPreview);
-            previewHeight -= reducePreview;
-            deficit -= reducePreview;
-
-            int reduceAction = Math.min(deficit, actionHeight - minAction);
-            actionHeight -= reduceAction;
-            deficit -= reduceAction;
-        }
-        detailHeight = Math.max(40, rightAvailableHeight - actionHeight - previewHeight - gap * 2);
-
-        previewX = detailX;
-        previewY = detailY + detailHeight + gap;
-
-        actionX = detailX;
-        actionY = previewY + previewHeight + gap;
-        if (actionY + actionHeight > contentBottom) {
-            actionHeight = Math.max(48, contentBottom - actionY);
-        }
+        actionX = listX + listWidth + 8;
+        actionY = contentTop;
+        actionHeight = contentHeight;
 
         inventoryPickerWidth = Math.min(320, width - 40);
         inventoryPickerHeight = Math.min(190, height - 40);

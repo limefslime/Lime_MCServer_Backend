@@ -1,5 +1,6 @@
 package com.namanseul.farmingmod.client.ui.mail;
 
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
@@ -23,11 +24,13 @@ public final class MailRewardPanelView {
         List<Component> lines = buildLines(selectedMail, lastClaim);
         int lineY = y + 4;
         int maxY = y + height - 10;
+        int contentX = x + 6;
+        int contentWidth = Math.max(0, width - 12);
         for (Component line : lines) {
             if (lineY > maxY) {
                 break;
             }
-            graphics.drawString(font, line, x + 6, lineY, 0xEAF1FF, false);
+            drawStructuredLine(graphics, font, line.getString(), contentX, lineY, contentWidth);
             lineY += 12;
         }
     }
@@ -47,8 +50,7 @@ public final class MailRewardPanelView {
         lines.add(Component.literal("rewardAmount: " + numberOrDash(selectedMail.rewardAmount())));
         if (selectedMail.itemRewardItemId() != null) {
             lines.add(Component.literal("itemReward: " + selectedMail.itemRewardItemId()
-                    + " x" + numberOrDash(selectedMail.itemRewardQuantity())
-                    + " (server-defined)"));
+                    + " x" + numberOrDash(selectedMail.itemRewardQuantity())));
         } else {
             lines.add(Component.literal("itemReward: -"));
         }
@@ -60,6 +62,20 @@ public final class MailRewardPanelView {
         }
 
         return lines;
+    }
+
+    private static void drawStructuredLine(GuiGraphics graphics, Font font, String line, int x, int y, int width) {
+        int colon = line.indexOf(':');
+        if (colon > 0 && colon < line.length() - 1) {
+            String label = line.substring(0, colon + 1).trim();
+            String value = line.substring(colon + 1).trim();
+            if (!value.isBlank() && label.length() <= 24) {
+                int labelWidth = Math.max(52, Math.min(124, width / 2));
+                UiTextRender.drawLabelValue(graphics, font, label, value, x, y, width, labelWidth, 0xC7D7F1, 0xEAF1FF);
+                return;
+            }
+        }
+        UiTextRender.drawEllipsized(graphics, font, line, x, y, width, 0xEAF1FF);
     }
 
     private static String safe(String value) {

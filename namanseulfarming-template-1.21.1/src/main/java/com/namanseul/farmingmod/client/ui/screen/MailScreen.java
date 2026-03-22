@@ -8,6 +8,7 @@ import com.namanseul.farmingmod.client.ui.mail.MailJsonParser;
 import com.namanseul.farmingmod.client.ui.mail.MailListPanel;
 import com.namanseul.farmingmod.client.ui.mail.MailRewardPanelView;
 import com.namanseul.farmingmod.client.ui.mail.MailViewData;
+import com.namanseul.farmingmod.client.ui.widget.BalanceHudState;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
 import com.namanseul.farmingmod.network.UiAction;
@@ -151,7 +152,7 @@ public final class MailScreen extends BaseGameScreen {
         renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
         renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.mail.actions"), actionX + 6, actionY + 6);
         renderClipped(graphics, actionX, actionY, actionWidth, actionHeight, () ->
-                MailActionPanelView.render(graphics, font, actionX + 8, actionY + 34, statusMessage, claimLoading)
+                MailActionPanelView.render(graphics, font, actionX + 8, actionY + 34, actionWidth - 16, statusMessage, claimLoading)
         );
     }
 
@@ -330,6 +331,9 @@ public final class MailScreen extends BaseGameScreen {
         try {
             MailClaimResultViewData claim = MailJsonParser.parseClaim(payload.dataJson());
             lastClaim = claim;
+            if (claim.balanceAfter() != null) {
+                BalanceHudState.setBalance(claim.balanceAfter());
+            }
             String rewardText = claim.rewardAmount() == null ? "-" : Integer.toString(claim.rewardAmount());
             statusMessage = "claim success (reward " + rewardText + ")";
             setError(null);

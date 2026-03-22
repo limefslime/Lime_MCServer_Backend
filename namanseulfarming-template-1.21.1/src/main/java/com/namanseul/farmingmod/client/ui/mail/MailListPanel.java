@@ -1,5 +1,6 @@
 package com.namanseul.farmingmod.client.ui.mail;
 
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -90,11 +91,11 @@ public final class MailListPanel {
 
             MailViewData mail = entries.get(i);
             String titlePrefix = mail.recent() ? "[NEW] " : "";
-            String titleText = clipToWidth(font, titlePrefix + safe(mail.title()), width - 12);
+            String titleText = titlePrefix + safe(mail.title());
             String summaryText = buildSummaryLine(mail);
 
-            graphics.drawString(font, titleText, x + 6, rowY + 2, 0xFFFFFF, false);
-            graphics.drawString(font, clipToWidth(font, summaryText, width - 12), x + 6, rowY + 12, 0xBFD0E8, false);
+            UiTextRender.drawEllipsized(graphics, font, titleText, x + 6, rowY + 2, width - 12, 0xFFFFFF);
+            UiTextRender.drawEllipsized(graphics, font, summaryText, x + 6, rowY + 12, width - 12, 0xBFD0E8);
         }
 
         graphics.disableScissor();
@@ -156,31 +157,6 @@ public final class MailListPanel {
 
     private boolean contains(double mouseX, double mouseY) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
-    }
-
-    private static String clipToWidth(Font font, String value, int maxWidth) {
-        if (value == null) {
-            return "";
-        }
-        if (font.width(value) <= maxWidth) {
-            return value;
-        }
-
-        String ellipsis = "...";
-        int ellipsisWidth = font.width(ellipsis);
-        if (ellipsisWidth >= maxWidth) {
-            return "";
-        }
-
-        int length = value.length();
-        while (length > 0) {
-            String candidate = value.substring(0, length);
-            if (font.width(candidate) + ellipsisWidth <= maxWidth) {
-                return candidate + ellipsis;
-            }
-            length--;
-        }
-        return "";
     }
 
     private static String safe(String value) {
