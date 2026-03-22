@@ -3,7 +3,6 @@ package com.namanseul.farmingmod.client.ui.screen;
 import com.namanseul.farmingmod.client.ui.tab.HubTabView;
 import com.namanseul.farmingmod.client.ui.tab.InvestTabView;
 import com.namanseul.farmingmod.client.ui.tab.MailTabView;
-import com.namanseul.farmingmod.client.ui.tab.PlayerTabView;
 import com.namanseul.farmingmod.client.ui.tab.RegionTabView;
 import com.namanseul.farmingmod.client.ui.tab.ShopTabView;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
@@ -20,7 +19,6 @@ public final class GameHubScreen extends BaseGameScreen {
     private static final String MENU_MAIL = "mail";
     private static final String MENU_INVEST = "invest";
     private static final String MENU_REGION = "region";
-    private static final String MENU_PLAYER = "player";
 
     private static final int MENU_BUTTON_HEIGHT = 22;
     private static final int MENU_BUTTON_GAP = 8;
@@ -77,7 +75,6 @@ public final class GameHubScreen extends BaseGameScreen {
         menuViews.put(MENU_MAIL, new MailTabView());
         menuViews.put(MENU_INVEST, new InvestTabView());
         menuViews.put(MENU_REGION, new RegionTabView());
-        menuViews.put(MENU_PLAYER, new PlayerTabView());
     }
 
     public void handleServerResponse(UiResponsePayload payload) {

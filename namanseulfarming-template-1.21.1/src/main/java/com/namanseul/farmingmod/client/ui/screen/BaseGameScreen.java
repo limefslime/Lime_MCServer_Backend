@@ -3,6 +3,7 @@ package com.namanseul.farmingmod.client.ui.screen;
 import com.namanseul.farmingmod.client.ui.state.EmptyState;
 import com.namanseul.farmingmod.client.ui.state.ErrorState;
 import com.namanseul.farmingmod.client.ui.state.LoadingState;
+import com.namanseul.farmingmod.client.ui.widget.BalanceHudState;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiMessageBanner;
 import com.namanseul.farmingmod.client.ui.widget.UiPanel;
@@ -17,6 +18,10 @@ public abstract class BaseGameScreen extends Screen {
     private static final int COMMON_BUTTON_WIDTH = 72;
     private static final int COMMON_BUTTON_HEIGHT = 20;
     private static final int COMMON_BUTTON_GAP = 6;
+    private static final int SCREEN_BACKGROUND_COLOR = 0x880E1118;
+    private static final int BALANCE_HUD_X = 8;
+    private static final int BALANCE_HUD_Y = 8;
+    private static final int BALANCE_HUD_HEIGHT = 16;
 
     protected LoadingState loadingState = LoadingState.idle();
     protected ErrorState errorState = ErrorState.none();
@@ -87,7 +92,7 @@ public abstract class BaseGameScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, 0xFF0E1118);
+        graphics.fill(0, 0, width, height, SCREEN_BACKGROUND_COLOR);
         renderContents(graphics, mouseX, mouseY, partialTick);
         for (Renderable renderable : this.renderables) {
             renderable.render(graphics, mouseX, mouseY, partialTick);
@@ -104,6 +109,8 @@ public abstract class BaseGameScreen extends Screen {
         if (loadingState.active()) {
             renderLoadingOverlay(graphics, loadingState.message());
         }
+
+        renderBalanceHud(graphics);
     }
 
     protected void renderPanel(GuiGraphics graphics, int x, int y, int panelWidth, int panelHeight) {
@@ -150,6 +157,23 @@ public abstract class BaseGameScreen extends Screen {
             y -= 12;
         }
         graphics.drawCenteredString(font, message, width / 2, Math.max(8, y), 0xBFD0E8);
+    }
+
+    protected void renderBalanceHud(GuiGraphics graphics) {
+        String text = BalanceHudState.labelText();
+        int hudWidth = Math.max(84, font.width(text) + 10);
+
+        int x = BALANCE_HUD_X;
+        int y = BALANCE_HUD_Y;
+        int right = x + hudWidth;
+        int bottom = y + BALANCE_HUD_HEIGHT;
+
+        graphics.fill(x, y, right, bottom, 0xCC121A2B);
+        graphics.fill(x, y, right, y + 1, 0xFF6E86B0);
+        graphics.fill(x, bottom - 1, right, bottom, 0xFF6E86B0);
+        graphics.fill(x, y, x + 1, bottom, 0xFF6E86B0);
+        graphics.fill(right - 1, y, right, bottom, 0xFF6E86B0);
+        graphics.drawString(font, text, x + 5, y + 4, 0xE8F0FF, false);
     }
 
     public void setLoading(boolean loading) {

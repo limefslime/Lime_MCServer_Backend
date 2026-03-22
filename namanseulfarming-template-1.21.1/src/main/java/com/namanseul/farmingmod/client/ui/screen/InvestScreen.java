@@ -5,6 +5,7 @@ import com.namanseul.farmingmod.client.ui.invest.InvestStockDetailViewData;
 import com.namanseul.farmingmod.client.ui.invest.InvestStockJsonParser;
 import com.namanseul.farmingmod.client.ui.invest.InvestStockViewData;
 import com.namanseul.farmingmod.client.ui.invest.InvestTradeResultViewData;
+import com.namanseul.farmingmod.client.ui.widget.BalanceHudState;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
 import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
@@ -511,6 +512,7 @@ public final class InvestScreen extends BaseGameScreen {
         try {
             InvestStockDetailViewData detail = InvestStockJsonParser.parseStockDetail(payload.dataJson());
             walletBalance = detail.walletBalance();
+            BalanceHudState.setBalance(walletBalance);
             upsertStock(detail.stock());
             selectedStock = detail.stock();
             detailReady = true;
@@ -550,6 +552,7 @@ public final class InvestScreen extends BaseGameScreen {
         try {
             InvestTradeResultViewData result = InvestStockJsonParser.parseTradeResult(payload.dataJson());
             walletBalance = result.walletBalanceAfter();
+            BalanceHudState.setBalance(walletBalance);
             if (result.stock() != null) {
                 upsertStock(result.stock());
                 selectedStock = result.stock();

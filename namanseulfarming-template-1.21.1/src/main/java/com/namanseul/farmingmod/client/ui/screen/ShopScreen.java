@@ -11,6 +11,7 @@ import com.namanseul.farmingmod.client.ui.shop.ShopJsonParser;
 import com.namanseul.farmingmod.client.ui.shop.ShopItemListPanel;
 import com.namanseul.farmingmod.client.ui.shop.ShopPreviewViewData;
 import com.namanseul.farmingmod.client.ui.shop.ShopTradeViewData;
+import com.namanseul.farmingmod.client.ui.widget.BalanceHudState;
 import com.namanseul.farmingmod.client.ui.widget.UiButton;
 import com.namanseul.farmingmod.client.ui.widget.UiListPanel;
 import com.namanseul.farmingmod.network.UiAction;
@@ -772,6 +773,11 @@ public final class ShopScreen extends BaseGameScreen {
             } else {
                 sellPreview = preview;
             }
+            if (preview.balanceAfterPreview() != null) {
+                BalanceHudState.setBalance(preview.balanceAfterPreview());
+            } else if (preview.balanceBefore() != null) {
+                BalanceHudState.setBalance(preview.balanceBefore());
+            }
             statusMessage = null;
             setError(null);
         } catch (Exception ex) {
@@ -797,6 +803,9 @@ public final class ShopScreen extends BaseGameScreen {
 
         try {
             lastTrade = ShopJsonParser.parseTrade(payload.dataJson(), transactionType);
+            if (lastTrade.balanceAfter() != null) {
+                BalanceHudState.setBalance(lastTrade.balanceAfter());
+            }
             statusMessage = "buy".equals(transactionType) ? "Purchase completed." : "Sale completed.";
             setError(null);
             requestItemList(true);
