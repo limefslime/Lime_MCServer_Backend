@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.namanseul.farmingmod.client.network.UiClientNetworking;
 import com.namanseul.farmingmod.client.ui.shop.ShopActionPanelView;
-import com.namanseul.farmingmod.client.ui.shop.ShopDetailPanelView;
 import com.namanseul.farmingmod.client.ui.shop.ShopItemViewData;
 import com.namanseul.farmingmod.client.ui.shop.ShopJsonParser;
 import com.namanseul.farmingmod.client.ui.shop.ShopItemListPanel;
@@ -85,11 +84,6 @@ public final class ShopScreen extends BaseGameScreen {
     private int listWidth;
     private int listHeight;
 
-    private int detailX;
-    private int detailY;
-    private int detailWidth;
-    private int detailHeight;
-
     private int actionX;
     private int actionY;
     private int actionWidth;
@@ -126,7 +120,7 @@ public final class ShopScreen extends BaseGameScreen {
             closeButton.setMessage(Component.translatable("screen.namanseulfarming.shop.back"));
         }
 
-        itemListPanel = new ShopItemListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22);
+        itemListPanel = new ShopItemListPanel(listX + 4, listY + 18, listWidth - 8, listHeight - 22, 20);
         initActionWidgets();
         initInventoryPickerWidgets();
         requestItemList(false);
@@ -163,24 +157,6 @@ public final class ShopScreen extends BaseGameScreen {
             itemListPanel.render(graphics, font, mouseX, mouseY);
         }
 
-        renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
-        renderSectionTitle(graphics, Component.literal("Trade"), detailX + 6, detailY + 6);
-        renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () ->
-                ShopDetailPanelView.render(
-                        graphics,
-                        font,
-                        detailX + 2,
-                        detailY + 18,
-                        detailWidth - 4,
-                        detailHeight - 20,
-                        selectedItem,
-                        buyPreview,
-                        sellPreview,
-                        previewLoading,
-                        lastTrade
-                )
-        );
-
         renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
         renderSectionTitle(graphics, Component.translatable("screen.namanseulfarming.shop.actions"), actionX + 6, actionY + 6);
         renderClipped(graphics, actionX, actionY, actionWidth, actionHeight, () ->
@@ -190,6 +166,11 @@ public final class ShopScreen extends BaseGameScreen {
                         actionX + 8,
                         actionY + 20,
                         actionWidth - 16,
+                        actionHeight - 24,
+                        selectedItem,
+                        buyPreview,
+                        sellPreview,
+                        lastTrade,
                         quantityError,
                         statusMessage,
                         previewLoading,
@@ -211,11 +192,37 @@ public final class ShopScreen extends BaseGameScreen {
             return super.mouseClicked(mouseX, mouseY, button);
         }
 
-        if (itemListPanel != null && itemListPanel.mouseClicked(mouseX, mouseY, button)) {
-            onSelectedIndexChanged();
-            return true;
+        if (itemListPanel != null) {
+            int selectedBefore = itemListPanel.selectedIndex();
+            if (itemListPanel.mouseClicked(mouseX, mouseY, button)) {
+                if (selectedBefore != itemListPanel.selectedIndex()) {
+                    onSelectedIndexChanged();
+                }
+                return true;
+            }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (!inventoryPickerVisible
+                && button == 0
+                && itemListPanel != null
+                && itemListPanel.mouseDragged(mouseX, mouseY)) {
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (!inventoryPickerVisible
+                && itemListPanel != null
+                && itemListPanel.mouseReleased(button)) {
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
@@ -988,73 +995,70 @@ public final class ShopScreen extends BaseGameScreen {
         }
 
         int contentLeft = actionX + 8;
-        int contentRight = actionX + actionWidth - 8;
-        int rowOneY = actionY + 16;
-        int rowTwoY = Math.min(
-                actionY + actionHeight - 22,
-                Math.max(rowOneY + 22, actionY + 40)
-        );
+        int contentWidth = Math.max(132, actionWidth - 16);
+        int controlsTop = Math.max(actionY + 88, actionY + actionHeight - 52);
+        int quantityRowY = controlsTop;
+        int buttonRowY = controlsTop + 24;
 
         int quickGap = 3;
-        int quickZoneWidth = clampInt(actionWidth / 2, 66, 102);
-        int quickStartX = contentRight - quickZoneWidth;
+        int quickZoneWidth = clampInt(contentWidth / 2, 72, 108);
         int quickWidth = Math.max(18, (quickZoneWidth - quickGap * 2) / 3);
+        int quickStartX = contentLeft + contentWidth - quickZoneWidth;
 
-        int inputX = contentLeft + 58;
+        int inputX = contentLeft;
         int inputWidth = quickStartX - quickGap - inputX;
-        if (inputWidth < 36) {
-            inputWidth = 36;
-            inputX = Math.max(contentLeft + 34, quickStartX - quickGap - inputWidth);
+        if (inputWidth < 44) {
+            inputWidth = 44;
         }
 
-        quantityInput.setPosition(inputX, rowOneY + 2);
+        quantityInput.setPosition(inputX, quantityRowY + 2);
         quantityInput.setWidth(Math.max(34, inputWidth));
 
         if (quantityOneButton != null) {
-            quantityOneButton.setPosition(quickStartX, rowOneY);
+            quantityOneButton.setPosition(quickStartX, quantityRowY);
             quantityOneButton.setWidth(quickWidth);
         }
         if (quantityTenButton != null) {
-            quantityTenButton.setPosition(quickStartX + quickWidth + quickGap, rowOneY);
+            quantityTenButton.setPosition(quickStartX + quickWidth + quickGap, quantityRowY);
             quantityTenButton.setWidth(quickWidth);
         }
         if (quantityStackButton != null) {
-            quantityStackButton.setPosition(quickStartX + (quickWidth + quickGap) * 2, rowOneY);
+            quantityStackButton.setPosition(quickStartX + (quickWidth + quickGap) * 2, quantityRowY);
             quantityStackButton.setWidth(quickWidth);
         }
 
         int gap = 4;
-        int availableWidth = actionWidth - 16 - gap * 3;
-        int buttonWidth = Math.max(22, availableWidth / 4);
+        int availableWidth = contentWidth - gap * 3;
+        int buttonWidth = Math.max(28, availableWidth / 4);
         int startX = contentLeft;
 
         if (registerItemButton != null) {
-            registerItemButton.setPosition(startX, rowTwoY);
+            registerItemButton.setPosition(startX, buttonRowY);
             registerItemButton.setWidth(buttonWidth);
         }
         if (buyButton != null) {
-            buyButton.setPosition(startX + (buttonWidth + gap), rowTwoY);
+            buyButton.setPosition(startX + (buttonWidth + gap), buttonRowY);
             buyButton.setWidth(buttonWidth);
         }
         if (sellButton != null) {
-            sellButton.setPosition(startX + (buttonWidth + gap) * 2, rowTwoY);
+            sellButton.setPosition(startX + (buttonWidth + gap) * 2, buttonRowY);
             sellButton.setWidth(buttonWidth);
         }
         if (cancelSellButton != null) {
-            cancelSellButton.setPosition(startX + (buttonWidth + gap) * 3, rowTwoY);
+            cancelSellButton.setPosition(startX + (buttonWidth + gap) * 3, buttonRowY);
             cancelSellButton.setWidth(buttonWidth);
         }
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(560, width - 20);
-        frameHeight = Math.min(360, height - 36);
+        frameWidth = Math.min(640, width - 20);
+        frameHeight = Math.min(372, height - 30);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 
         int innerWidth = frameWidth - 20;
-        int minRightWidth = 170;
-        int preferredListWidth = clampInt(innerWidth * 38 / 100, 118, 210);
+        int minRightWidth = 188;
+        int preferredListWidth = clampInt(innerWidth * 52 / 100, 172, 332);
         if (innerWidth - preferredListWidth - 8 < minRightWidth) {
             preferredListWidth = Math.max(96, innerWidth - minRightWidth - 8);
         }
@@ -1062,27 +1066,16 @@ public final class ShopScreen extends BaseGameScreen {
         listX = frameX + 10;
         listY = frameY + 34;
         listWidth = Math.max(96, preferredListWidth);
-        detailWidth = Math.max(96, innerWidth - listWidth - 8);
+        actionWidth = Math.max(96, innerWidth - listWidth - 8);
 
         int contentTop = listY;
         int contentBottom = frameY + frameHeight - 10;
-        int rightAvailableHeight = Math.max(120, contentBottom - contentTop);
-        listHeight = Math.max(64, rightAvailableHeight);
+        int contentHeight = Math.max(120, contentBottom - contentTop);
+        listHeight = Math.max(64, contentHeight);
 
-        detailX = listX + listWidth + 8;
-        detailY = contentTop;
-        actionWidth = detailWidth;
-
-        int gap = 6;
-        int minAction = 76;
-        actionHeight = clampInt(rightAvailableHeight / 3, minAction, 98);
-        detailHeight = Math.max(68, rightAvailableHeight - actionHeight - gap);
-
-        actionX = detailX;
-        actionY = detailY + detailHeight + gap;
-        if (actionY + actionHeight > contentBottom) {
-            actionHeight = Math.max(48, contentBottom - actionY);
-        }
+        actionX = listX + listWidth + 8;
+        actionY = contentTop;
+        actionHeight = contentHeight;
 
         inventoryPickerWidth = Math.min(320, width - 40);
         inventoryPickerHeight = Math.min(190, height - 40);
