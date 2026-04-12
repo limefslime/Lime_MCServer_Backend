@@ -110,26 +110,6 @@ public final class UiClientNetworking {
         return send(UiScreenType.STATUS, UiAction.STATUS_REFRESH, payloadWithForceRefresh(true));
     }
 
-    public static String requestPlayerOverview(boolean forceRefresh) {
-        return send(UiScreenType.PLAYER, UiAction.PLAYER_OVERVIEW, payloadWithForceRefresh(forceRefresh));
-    }
-
-    public static String requestPlayerWallet(boolean forceRefresh) {
-        return send(UiScreenType.PLAYER, UiAction.PLAYER_WALLET, payloadWithForceRefresh(forceRefresh));
-    }
-
-    public static String requestPlayerActivity(boolean forceRefresh) {
-        return send(UiScreenType.PLAYER, UiAction.PLAYER_ACTIVITY, payloadWithForceRefresh(forceRefresh));
-    }
-
-    public static String requestPlayerSummary(boolean forceRefresh) {
-        return send(UiScreenType.PLAYER, UiAction.PLAYER_SUMMARY, payloadWithForceRefresh(forceRefresh));
-    }
-
-    public static String requestPlayerRefresh() {
-        return send(UiScreenType.PLAYER, UiAction.PLAYER_REFRESH, payloadWithForceRefresh(true));
-    }
-
     private static JsonObject payloadWithForceRefresh(boolean forceRefresh) {
         JsonObject payload = new JsonObject();
         payload.addProperty("forceRefresh", forceRefresh);

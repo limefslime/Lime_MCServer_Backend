@@ -16,6 +16,7 @@ tmp_*.sqlite3
 # gradle/build artifacts
 **/.gradle/
 **/.gradle-home/
+**/.gradle-home*/
 **/build/
 **/runs/
 
