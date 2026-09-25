@@ -5,7 +5,6 @@ import com.namanseul.farmingmod.NamanseulFarming;
 import com.namanseul.farmingmod.client.ui.screen.GameHubScreen;
 import com.namanseul.farmingmod.client.ui.screen.InvestScreen;
 import com.namanseul.farmingmod.client.ui.screen.MailScreen;
-import com.namanseul.farmingmod.client.ui.screen.PlayerOverviewScreen;
 import com.namanseul.farmingmod.client.ui.screen.ShopScreen;
 import com.namanseul.farmingmod.client.ui.screen.StatusScreen;
 import com.namanseul.farmingmod.network.UiAction;
@@ -36,7 +35,6 @@ public final class ClientUiResponseDispatcher {
                 case MAIL -> handleMail(payload, minecraft);
                 case INVEST -> handleInvest(payload, minecraft);
                 case STATUS -> handleStatus(payload, minecraft);
-                case PLAYER -> handlePlayer(payload, minecraft);
             }
         });
     }
@@ -123,23 +121,6 @@ public final class ClientUiResponseDispatcher {
 
         if (shouldAutoOpenJsonScreen(payload)) {
             StatusScreen autoOpened = StatusScreen.openStandalone();
-            autoOpened.handleServerResponse(payload);
-        }
-    }
-
-    private static void handlePlayer(UiResponsePayload payload, Minecraft minecraft) {
-        if (payload.action() == UiAction.OPEN) {
-            PlayerOverviewScreen.openStandalone();
-            return;
-        }
-
-        if (minecraft.screen instanceof PlayerOverviewScreen playerOverviewScreen) {
-            playerOverviewScreen.handleServerResponse(payload);
-            return;
-        }
-
-        if (shouldAutoOpenJsonScreen(payload)) {
-            PlayerOverviewScreen autoOpened = PlayerOverviewScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
     }

@@ -1,0 +1,94 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <style>
+      .bg { fill: #1b1f24; }
+      .panel { fill: #242a31; stroke: #4a5563; stroke-width: 2; rx: 10; }
+      .title { fill: #f2f4f8; font: 700 28px 'Segoe UI', sans-serif; }
+      .subtitle { fill: #c7d0db; font: 600 16px 'Segoe UI', sans-serif; }
+      .text { fill: #e8edf5; font: 500 15px 'Segoe UI', sans-serif; }
+      .muted { fill: #9faaba; font: 500 14px 'Segoe UI', sans-serif; }
+      .green { fill: #48d597; font: 700 18px 'Segoe UI', sans-serif; }
+      .red { fill: #ff6b6b; font: 700 18px 'Segoe UI', sans-serif; }
+      .line { stroke: #5a6675; stroke-width: 1.2; }
+      .button-buy { fill: #2f7cf7; rx: 8; }
+      .button-sell { fill: #2fb36c; rx: 8; }
+      .button-disabled { fill: #596273; rx: 8; }
+      .btn-text { fill: white; font: 700 16px 'Segoe UI', sans-serif; }
+      .chip { fill: #313944; rx: 6; }
+      .chip-text { fill: #d8e0ea; font: 600 13px 'Segoe UI', sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="760"/>
+
+  <text class="title" x="40" y="48">Invest Screen Layout Preview</text>
+  <text class="muted" x="40" y="74">Left: stock list / Right-top: stock detail / Right-bottom: buy-sell action</text>
+
+  <!-- Left panel -->
+  <rect class="panel" x="40" y="100" width="420" height="620"/>
+  <text class="subtitle" x="62" y="132">Stocks</text>
+
+  <rect class="chip" x="62" y="152" width="376" height="42"/>
+  <text class="chip-text" x="78" y="178">Wheat Corp        1,250        +20</text>
+
+  <rect class="chip" x="62" y="202" width="376" height="42"/>
+  <text class="chip-text" x="78" y="228">Corn Holdings     940         -10</text>
+
+  <rect class="chip" x="62" y="252" width="376" height="42"/>
+  <text class="chip-text" x="78" y="278">Rice Labs         2,100       +35</text>
+
+  <rect class="chip" x="62" y="302" width="376" height="42"/>
+  <text class="chip-text" x="78" y="328">Bean Works        780         - 0</text>
+
+  <text class="muted" x="62" y="700">Item format: Name / Current Price / +/- Change</text>
+
+  <!-- Right top detail -->
+  <rect class="panel" x="500" y="100" width="660" height="310"/>
+  <text class="subtitle" x="522" y="132">Detail</text>
+
+  <text class="title" x="522" y="178" style="font-size:32px;">Wheat Corp</text>
+  <line class="line" x1="522" y1="192" x2="1138" y2="192"/>
+
+  <text class="text" x="522" y="228">Current:</text>
+  <text class="text" x="760" y="228">1,250</text>
+
+  <text class="text" x="522" y="258">Holding:</text>
+  <text class="text" x="760" y="258">32</text>
+
+  <text class="text" x="522" y="288">Avg Buy:</text>
+  <text class="text" x="760" y="288">1,180</text>
+
+  <text class="text" x="522" y="330">PnL:</text>
+  <text class="green" x="760" y="330">+2,240</text>
+
+  <!-- Right bottom action -->
+  <rect class="panel" x="500" y="430" width="660" height="290"/>
+  <text class="subtitle" x="522" y="462">Trade Action</text>
+
+  <text class="text" x="522" y="498">Quantity:</text>
+  <rect class="chip" x="620" y="480" width="120" height="30"/>
+  <text class="chip-text" x="635" y="501">5</text>
+
+  <text class="text" x="522" y="540">Buy:</text>
+  <text class="text" x="760" y="540">6,250</text>
+
+  <text class="text" x="522" y="568">Sell:</text>
+  <text class="text" x="760" y="568">6,250</text>
+
+  <text class="text" x="522" y="606">Total:</text>
+  <text class="text" x="760" y="606">6,250 (fee: 0이면 숨김)</text>
+
+  <text class="text" x="522" y="636">Wallet:</text>
+  <text class="text" x="760" y="636">14,800</text>
+
+  <rect class="button-buy" x="930" y="528" width="100" height="38"/>
+  <text class="btn-text" x="963" y="553">BUY</text>
+
+  <rect class="button-sell" x="1044" y="528" width="100" height="38"/>
+  <text class="btn-text" x="1074" y="553">SELL</text>
+
+  <rect class="button-disabled" x="930" y="576" width="214" height="32"/>
+  <text class="btn-text" x="964" y="598" style="font-size:13px;">Disabled when invalid input</text>
+
+  <text class="muted" x="522" y="694">Message area: success/error shown here, short and clear</text>
+</svg>

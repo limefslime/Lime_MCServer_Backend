@@ -22,6 +22,36 @@ public final class BackendInvestBridge {
 
     private BackendInvestBridge() {}
 
+    public static JsonElement listStocks(String playerId) throws InvestBridgeException {
+        String encodedPlayerId = encodePathSegment(playerId);
+        return sendGet("/invest/stocks?playerId=" + encodedPlayerId);
+    }
+
+    public static JsonElement getStockDetail(String stockId, String playerId) throws InvestBridgeException {
+        String encodedStockId = encodePathSegment(stockId);
+        String encodedPlayerId = encodePathSegment(playerId);
+        return sendGet("/invest/stocks/" + encodedStockId + "?playerId=" + encodedPlayerId);
+    }
+
+    public static JsonElement buyStock(String playerId, String stockId, int quantity)
+            throws InvestBridgeException {
+        String encodedStockId = encodePathSegment(stockId);
+        JsonObject body = new JsonObject();
+        body.addProperty("playerId", playerId);
+        body.addProperty("quantity", quantity);
+        return sendPost("/invest/stocks/" + encodedStockId + "/buy", body);
+    }
+
+    public static JsonElement sellStock(String playerId, String stockId, int quantity)
+            throws InvestBridgeException {
+        String encodedStockId = encodePathSegment(stockId);
+        JsonObject body = new JsonObject();
+        body.addProperty("playerId", playerId);
+        body.addProperty("quantity", quantity);
+        return sendPost("/invest/stocks/" + encodedStockId + "/sell", body);
+    }
+
+    // Legacy bridge methods are kept for compatibility.
     public static JsonElement listProjects() throws InvestBridgeException {
         return sendGet("/invest/projects");
     }

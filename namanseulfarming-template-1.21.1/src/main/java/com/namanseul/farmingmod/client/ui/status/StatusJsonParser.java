@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.jetbrains.annotations.Nullable;
 
 public final class StatusJsonParser {
@@ -37,8 +38,8 @@ public final class StatusJsonParser {
         }
 
         String region = readString(focus, "focusRegion", "-");
-        String status = readString(focus, "status", "");
-        String sourceCategory = readString(focus, "sourceCategory", "");
+        String status = normalizeFocusStatus(readString(focus, "status", ""));
+        String sourceCategory = humanizeWords(readString(focus, "sourceCategory", ""));
         boolean available = !region.equals("-") || !status.isBlank() || !sourceCategory.isBlank();
 
         return new StatusOverviewData.FocusSnapshot(region, status, sourceCategory, available);
@@ -75,7 +76,7 @@ public final class StatusJsonParser {
                     readFirstString(event, "name", "id"),
                     readString(event, "region", "-"),
                     buildEffectLabel(effectType, effectValue),
-                    readFirstString(event, "runtimeStatus", "status"),
+                    normalizeEventStatus(readFirstString(event, "runtimeStatus", "status"), readBoolean(event, "isRuntimeActive")),
                     readBoolean(event, "isRuntimeActive")
             ));
         }
@@ -92,8 +93,8 @@ public final class StatusJsonParser {
             Double effectValue = readFirstDouble(effect, "effectValue", "effect_value");
             parsed.add(new StatusOverviewData.EffectSnapshot(
                     readFirstString(effect, "projectId", "project_id"),
-                    readFirstString(effect, "effectTarget", "effect_target"),
-                    readFirstString(effect, "effectType", "effect_type"),
+                    humanizeWords(readFirstString(effect, "effectTarget", "effect_target")),
+                    humanizeWords(readFirstString(effect, "effectType", "effect_type")),
                     effectValue == null ? 0.0 : effectValue,
                     readFirstBoolean(effect, "isEffectActive", "is_active")
             ));
@@ -311,7 +312,7 @@ public final class StatusJsonParser {
     }
 
     private static String buildEffectLabel(String effectType, @Nullable Double effectValue) {
-        String type = effectType == null || effectType.isBlank() ? "Effect" : effectType;
+        String type = effectType == null || effectType.isBlank() ? "Effect" : humanizeWords(effectType);
         if (effectValue == null) {
             return type;
         }
@@ -321,5 +322,66 @@ public final class StatusJsonParser {
             return type + " " + (int) value;
         }
         return type + " " + String.format("%.2f", value);
+    }
+
+    private static String normalizeFocusStatus(String rawStatus) {
+        String normalized = normalizeKey(rawStatus);
+        return switch (normalized) {
+            case "active", "running" -> "Active";
+            case "idle", "waiting", "cooldown" -> "Waiting";
+            case "completed", "complete", "done", "ended" -> "Completed";
+            default -> humanizeWords(rawStatus);
+        };
+    }
+
+    private static String normalizeEventStatus(String rawStatus, boolean runtimeActive) {
+        String normalized = normalizeKey(rawStatus);
+        if ("active".equals(normalized) || "running".equals(normalized)) {
+            return "Live";
+        }
+        if ("waiting".equals(normalized) || "pending".equals(normalized) || "ready".equals(normalized)) {
+            return "Starting Soon";
+        }
+        if ("completed".equals(normalized) || "ended".equals(normalized) || "closed".equals(normalized)) {
+            return "Ended";
+        }
+        if (normalized.isBlank()) {
+            return runtimeActive ? "Live" : "Paused";
+        }
+        return humanizeWords(rawStatus);
+    }
+
+    private static String normalizeKey(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        return raw.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String humanizeWords(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String normalized = raw.trim().replace('_', ' ').replace('-', ' ');
+        if (normalized.isBlank()) {
+            return "";
+        }
+
+        String[] words = normalized.split("\\s+");
+        StringBuilder builder = new StringBuilder();
+        for (String word : words) {
+            if (word.isBlank()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(' ');
+            }
+            String lower = word.toLowerCase(Locale.ROOT);
+            builder.append(Character.toUpperCase(lower.charAt(0)));
+            if (lower.length() > 1) {
+                builder.append(lower.substring(1));
+            }
+        }
+        return builder.toString();
     }
 }

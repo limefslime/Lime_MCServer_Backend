@@ -12,9 +12,9 @@ public final class InvestUiService {
 
     private InvestUiService() {}
 
-    public static JsonElement listProjects(UUID playerUuid, boolean forceRefresh)
+    public static JsonElement listStocks(UUID playerUuid, boolean forceRefresh)
             throws BackendInvestBridge.InvestBridgeException {
-        String cacheKey = "invest:list:" + playerUuid;
+        String cacheKey = "invest:stocks:" + playerUuid;
         if (!forceRefresh) {
             JsonElement cached = READ_CACHE.get(cacheKey).orElse(null);
             if (cached != null) {
@@ -22,15 +22,15 @@ public final class InvestUiService {
             }
         }
 
-        JsonElement result = BackendInvestBridge.listProjects();
+        JsonElement result = BackendInvestBridge.listStocks(playerUuid.toString());
         READ_CACHE.put(cacheKey, deepCopy(result), READ_CACHE_TTL);
         return result;
     }
 
-    public static JsonElement getProjectDetail(UUID playerUuid, String projectId, boolean forceRefresh)
+    public static JsonElement getStockDetail(UUID playerUuid, String stockId, boolean forceRefresh)
             throws BackendInvestBridge.InvestBridgeException, InvestUiException {
-        String normalizedProjectId = requireProjectId(projectId);
-        String cacheKey = "invest:detail:" + playerUuid + ":" + normalizedProjectId;
+        String normalizedStockId = requireStockId(stockId);
+        String cacheKey = "invest:detail:" + playerUuid + ":" + normalizedStockId;
         if (!forceRefresh) {
             JsonElement cached = READ_CACHE.get(cacheKey).orElse(null);
             if (cached != null) {
@@ -38,79 +38,61 @@ public final class InvestUiService {
             }
         }
 
-        JsonElement detailPayload = BackendInvestBridge.getProjectDetail(normalizedProjectId);
-        JsonElement progressPayload = getProjectProgress(playerUuid, normalizedProjectId, forceRefresh);
-        JsonElement completionPayload = getProjectCompletionStatus(normalizedProjectId, forceRefresh);
-
-        JsonObject combined = new JsonObject();
-        combined.addProperty("projectId", normalizedProjectId);
-        combined.add("project", deepCopy(detailPayload));
-        combined.add("progress", extractProgressObject(progressPayload));
-        combined.add("completion", deepCopy(completionPayload));
-
-        READ_CACHE.put(cacheKey, combined, READ_CACHE_TTL);
-        return combined;
-    }
-
-    public static JsonElement getProjectProgress(UUID playerUuid, String projectId, boolean forceRefresh)
-            throws BackendInvestBridge.InvestBridgeException, InvestUiException {
-        String normalizedProjectId = requireProjectId(projectId);
-        String cacheKey = "invest:progress:" + playerUuid + ":" + normalizedProjectId;
-        if (!forceRefresh) {
-            JsonElement cached = READ_CACHE.get(cacheKey).orElse(null);
-            if (cached != null) {
-                return cached;
-            }
-        }
-
-        JsonElement result = BackendInvestBridge.getProjectProgress(normalizedProjectId);
+        JsonElement result = BackendInvestBridge.getStockDetail(normalizedStockId, playerUuid.toString());
         READ_CACHE.put(cacheKey, deepCopy(result), READ_CACHE_TTL);
         return result;
     }
 
-    public static JsonElement invest(UUID playerUuid, String projectId, int amount)
+    public static JsonElement buy(UUID playerUuid, String stockId, int quantity)
             throws BackendInvestBridge.InvestBridgeException, InvestUiException {
-        String normalizedProjectId = requireProjectId(projectId);
-        if (amount <= 0) {
-            throw new InvestUiException("amount must be a positive integer");
+        String normalizedStockId = requireStockId(stockId);
+        if (quantity <= 0) {
+            throw new InvestUiException("quantity must be a positive integer");
         }
 
-        JsonElement result = BackendInvestBridge.investToProject(playerUuid.toString(), normalizedProjectId, amount);
+        JsonElement result = BackendInvestBridge.buyStock(playerUuid.toString(), normalizedStockId, quantity);
         invalidateReadCaches();
         return result;
     }
 
-    private static JsonElement getProjectCompletionStatus(String projectId, boolean forceRefresh)
-            throws BackendInvestBridge.InvestBridgeException {
-        String cacheKey = "invest:completion:" + projectId;
-        if (!forceRefresh) {
-            JsonElement cached = READ_CACHE.get(cacheKey).orElse(null);
-            if (cached != null) {
-                return cached;
-            }
+    public static JsonElement sell(UUID playerUuid, String stockId, int quantity)
+            throws BackendInvestBridge.InvestBridgeException, InvestUiException {
+        String normalizedStockId = requireStockId(stockId);
+        if (quantity <= 0) {
+            throw new InvestUiException("quantity must be a positive integer");
         }
 
-        JsonElement result = BackendInvestBridge.getProjectCompletionStatus(projectId);
-        READ_CACHE.put(cacheKey, deepCopy(result), READ_CACHE_TTL);
+        JsonElement result = BackendInvestBridge.sellStock(playerUuid.toString(), normalizedStockId, quantity);
+        invalidateReadCaches();
         return result;
     }
 
-    private static JsonElement extractProgressObject(JsonElement progressPayload) {
-        if (progressPayload != null && progressPayload.isJsonObject()) {
-            JsonObject object = progressPayload.getAsJsonObject();
-            JsonElement nestedProgress = object.get("progress");
-            if (nestedProgress != null && nestedProgress.isJsonObject()) {
-                return deepCopy(nestedProgress);
-            }
-        }
-        return deepCopy(progressPayload);
+    // Legacy methods are retained for older actions.
+    public static JsonElement listProjects(UUID playerUuid, boolean forceRefresh)
+            throws BackendInvestBridge.InvestBridgeException {
+        return listStocks(playerUuid, forceRefresh);
     }
 
-    private static String requireProjectId(String projectId) throws InvestUiException {
-        if (projectId == null || projectId.isBlank()) {
-            throw new InvestUiException("projectId is required");
+    public static JsonElement getProjectDetail(UUID playerUuid, String projectId, boolean forceRefresh)
+            throws BackendInvestBridge.InvestBridgeException, InvestUiException {
+        return getStockDetail(playerUuid, projectId, forceRefresh);
+    }
+
+    public static JsonElement getProjectProgress(UUID playerUuid, String projectId, boolean forceRefresh)
+            throws BackendInvestBridge.InvestBridgeException, InvestUiException {
+        return getStockDetail(playerUuid, projectId, forceRefresh);
+    }
+
+    public static JsonElement invest(UUID playerUuid, String projectId, int amount)
+            throws BackendInvestBridge.InvestBridgeException, InvestUiException {
+        return buy(playerUuid, projectId, amount);
+    }
+
+    private static String requireStockId(String stockId) throws InvestUiException {
+        if (stockId == null || stockId.isBlank()) {
+            throw new InvestUiException("stockId is required");
         }
-        return projectId.trim();
+        return stockId.trim();
     }
 
     private static JsonElement deepCopy(JsonElement element) {

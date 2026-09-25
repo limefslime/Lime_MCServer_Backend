@@ -1,7 +1,6 @@
 package com.namanseul.farmingmod.client.ui.shop;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import com.namanseul.farmingmod.client.ui.widget.UiTextRender;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
@@ -19,155 +18,93 @@ public final class ShopDetailPanelView {
             int y,
             int width,
             int height,
-            @Nullable ShopItemViewData item
+            @Nullable ShopItemViewData item,
+            @Nullable ShopPreviewViewData buyPreview,
+            @Nullable ShopPreviewViewData sellPreview,
+            boolean previewLoading,
+            @Nullable ShopTradeViewData trade
     ) {
-        List<Component> lines = buildLines(item);
+        List<Component> lines = buildLines(item, buyPreview, sellPreview, previewLoading, trade);
         int lineY = y + 4;
         int maxY = y + height - 10;
+        int contentX = x + 6;
+        int contentWidth = Math.max(0, width - 12);
         for (Component line : lines) {
             if (lineY > maxY) {
                 break;
             }
-            graphics.drawString(font, line, x + 6, lineY, 0xEAF1FF, false);
+            drawStructuredLine(graphics, font, line.getString(), contentX, lineY, contentWidth);
             lineY += 12;
         }
     }
 
-    private static List<Component> buildLines(@Nullable ShopItemViewData item) {
+    private static List<Component> buildLines(
+            @Nullable ShopItemViewData item,
+            @Nullable ShopPreviewViewData buyPreview,
+            @Nullable ShopPreviewViewData sellPreview,
+            boolean previewLoading,
+            @Nullable ShopTradeViewData trade
+    ) {
         List<Component> lines = new ArrayList<>();
         if (item == null) {
-            lines.add(Component.translatable("screen.namanseulfarming.shop.no_selection"));
+            lines.add(Component.literal("Select an item."));
             return lines;
         }
 
-        lines.add(Component.literal("itemId: " + item.itemId()));
-        lines.add(Component.literal("itemName: " + item.itemName()));
-        lines.add(Component.literal("category: " + item.category()));
-        lines.add(Component.literal("active: " + item.active()));
-        lines.add(Component.literal("stockQuantity: " + item.stockQuantity()));
+        String itemName = (item.itemName() == null || item.itemName().isBlank()) ? item.itemId() : item.itemName();
+        lines.add(Component.literal(itemName));
+        lines.add(Component.literal("Buy: " + item.currentBuyPrice()));
+        lines.add(Component.literal("Sell: " + item.currentSellPrice()));
+
+        if (buyPreview != null) {
+            lines.add(Component.literal("Buy x" + buyPreview.quantity() + ": " + buyPreview.netTotalPrice()));
+            if (buyPreview.feeAmount() > 0) {
+                lines.add(Component.literal("Buy Fee: " + buyPreview.feeAmount()));
+            }
+            if (Boolean.FALSE.equals(buyPreview.canAfford())) {
+                lines.add(Component.literal("Not enough balance."));
+            }
+        }
+
+        if (sellPreview != null) {
+            lines.add(Component.literal("Sell x" + sellPreview.quantity() + ": " + sellPreview.netTotalPrice()));
+            if (sellPreview.feeAmount() > 0) {
+                lines.add(Component.literal("Sell Fee: " + sellPreview.feeAmount()));
+            }
+        }
+
+        if (buyPreview == null && sellPreview == null) {
+            lines.add(Component.literal(previewLoading
+                    ? "Checking quote..."
+                    : "Set quantity for quote."));
+        }
+
+        int stock = Math.max(0, item.stockQuantity());
+        lines.add(Component.literal("Stock: " + stock));
         if (item.playerListed()) {
-            lines.add(Component.literal("playerListed: true"));
-            lines.add(Component.literal("listedQuantity: " + item.listingQuantity()));
-            lines.add(Component.literal("Cancel Sell to return this item by mail."));
-        }
-        lines.add(Component.literal("buy price: " + item.currentBuyPrice() + " (base " + item.buyPrice() + ")"));
-        lines.add(Component.literal("sell price: " + item.currentSellPrice() + " (base " + item.sellPrice() + ")"));
-
-        if (item.pricingSummary() != null && !item.pricingSummary().isBlank()) {
-            lines.add(Component.literal("pricingSummary: " + item.pricingSummary()));
-        }
-        if (!item.pricingReasonTags().isEmpty()) {
-            lines.add(Component.literal("pricingReasonTags: " + String.join(", ", item.pricingReasonTags())));
+            lines.add(Component.literal("Listed by you: " + Math.max(1, item.listingQuantity())));
         }
 
-        JsonObject activePricing = item.activePricing() != null ? item.activePricing() : item.pricingPreview();
-        JsonObject buyPricing = readObject(activePricing, "buy");
-        if (buyPricing != null) {
-            lines.add(Component.literal("buy totalMultiplier: " + readNumber(buyPricing, "totalMultiplier", 1.0)));
-            appendModifierLines(lines, buyPricing);
-        }
-
-        JsonObject sellPricing = readObject(activePricing, "sell");
-        if (sellPricing != null) {
-            lines.add(Component.literal("sell totalMultiplier: " + readNumber(sellPricing, "totalMultiplier", 1.0)));
-            appendModifierLines(lines, sellPricing);
+        if (trade != null && item.itemId().equals(trade.itemId())) {
+            String action = "buy".equalsIgnoreCase(trade.transactionType()) ? "Bought" : "Sold";
+            lines.add(Component.literal("Last: " + action + " x" + trade.quantity()));
+            lines.add(Component.literal("Last Net: " + trade.netTotalPrice()));
         }
 
         return lines;
     }
 
-    private static void appendModifierLines(List<Component> lines, JsonObject pricing) {
-        JsonObject fee = readObject(pricing, "fee");
-        if (fee != null) {
-            lines.add(Component.literal("fee: applied=" + readBoolean(fee, "applied", false)
-                    + " rate=" + readNumber(fee, "rate", 0.0)
-                    + " amount=" + readInt(fee, "amount", 0)));
+    private static void drawStructuredLine(GuiGraphics graphics, Font font, String line, int x, int y, int width) {
+        int colon = line.indexOf(':');
+        if (colon > 0 && colon < line.length() - 1) {
+            String label = line.substring(0, colon + 1).trim();
+            String value = line.substring(colon + 1).trim();
+            if (!value.isBlank() && label.length() <= 20) {
+                int labelWidth = Math.max(48, Math.min(108, width / 2));
+                UiTextRender.drawLabelValue(graphics, font, label, value, x, y, width, labelWidth, 0xC7D7F1, 0xEAF1FF);
+                return;
+            }
         }
-
-        JsonObject modifiers = readObject(pricing, "modifiers");
-        if (modifiers == null) {
-            return;
-        }
-
-        JsonObject focus = readObject(modifiers, "focus");
-        if (focus != null) {
-            lines.add(Component.literal("focus: applied=" + readBoolean(focus, "applied", false)
-                    + " mult=" + readNumber(focus, "multiplier", 1.0)
-                    + " target=" + readString(focus, "target", "-")));
-        }
-
-        JsonObject projectEffects = readObject(modifiers, "projectEffects");
-        if (projectEffects != null) {
-            lines.add(Component.literal("projectEffects: applied=" + readBoolean(projectEffects, "applied", false)
-                    + " count=" + readInt(projectEffects, "count", 0)
-                    + " mult=" + readNumber(projectEffects, "multiplier", 1.0)));
-        }
-
-        JsonObject events = readObject(modifiers, "events");
-        if (events != null) {
-            lines.add(Component.literal("events: applied=" + readBoolean(events, "applied", false)
-                    + " count=" + readInt(events, "count", 0)
-                    + " mult=" + readNumber(events, "multiplier", 1.0)));
-        }
-    }
-
-    @Nullable
-    private static JsonObject readObject(@Nullable JsonObject root, String key) {
-        if (root == null) {
-            return null;
-        }
-        JsonElement element = root.get(key);
-        if (element == null || !element.isJsonObject()) {
-            return null;
-        }
-        return element.getAsJsonObject();
-    }
-
-    private static String readString(JsonObject root, String key, String fallback) {
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return element.getAsString();
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static int readInt(JsonObject root, String key, int fallback) {
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return element.getAsInt();
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static double readNumber(JsonObject root, String key, double fallback) {
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return element.getAsDouble();
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static boolean readBoolean(JsonObject root, String key, boolean fallback) {
-        JsonElement element = root.get(key);
-        if (element == null || element.isJsonNull()) {
-            return fallback;
-        }
-        try {
-            return element.getAsBoolean();
-        } catch (Exception ignored) {
-            return fallback;
-        }
+        UiTextRender.drawEllipsized(graphics, font, line, x, y, width, 0xEAF1FF);
     }
 }

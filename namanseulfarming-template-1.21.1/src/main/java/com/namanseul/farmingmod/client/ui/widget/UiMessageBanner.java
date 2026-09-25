@@ -25,6 +25,9 @@ public record UiMessageBanner(MessageType type, Component message) {
         graphics.fill(x, y + height - 1, x + width, y + height, type.borderColor);
         graphics.fill(x, y, x + 1, y + height, type.borderColor);
         graphics.fill(x + width - 1, y, x + width, y + height, type.borderColor);
-        graphics.drawString(font, message, x + 6, y + (height - 8) / 2, 0xFFFFFF, false);
+        int textX = x + 6;
+        int textY = y + Math.max(0, (height - font.lineHeight) / 2);
+        int textWidth = Math.max(0, width - 12);
+        UiTextRender.drawEllipsized(graphics, font, message == null ? "" : message.getString(), textX, textY, textWidth, 0xFFFFFF);
     }
 }

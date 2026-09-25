@@ -1,11 +1,13 @@
 package com.namanseul.farmingmod.client.ui.widget;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 
 public final class UiListPanel {
     private final int x;
@@ -17,6 +19,8 @@ public final class UiListPanel {
     private List<Component> entries = List.of();
     private int selectedIndex = 0;
     private int scrollOffset = 0;
+    @Nullable
+    private RowRenderer rowRenderer;
 
     public UiListPanel(int x, int y, int width, int height) {
         this(x, y, width, height, 14);
@@ -64,6 +68,10 @@ public final class UiListPanel {
         return entries.get(Math.max(0, Math.min(selectedIndex, entries.size() - 1)));
     }
 
+    public void setRowRenderer(@Nullable RowRenderer renderer) {
+        this.rowRenderer = renderer;
+    }
+
     public boolean isEmpty() {
         return entries.isEmpty();
     }
@@ -86,7 +94,26 @@ public final class UiListPanel {
             if (i == selectedIndex) {
                 graphics.fill(x + 2, rowY - 1, x + width - 2, rowY + rowHeight - 2, 0xAA3A4A6A);
             }
-            graphics.drawString(font, entries.get(i), x + 6, rowY + 2, 0xFFFFFF, false);
+            int rowTextX = x + 6;
+            int rowTextY = rowY + Math.max(0, (rowHeight - font.lineHeight) / 2);
+            int rowTextWidth = Math.max(0, width - 12);
+            if (rowRenderer != null) {
+                rowRenderer.render(
+                        graphics,
+                        font,
+                        i,
+                        entries.get(i),
+                        rowTextX,
+                        rowTextY,
+                        rowTextWidth,
+                        rowHeight,
+                        i == selectedIndex
+                );
+                continue;
+            }
+            if (!renderStructuredEntry(graphics, font, entries.get(i).getString(), rowTextX, rowTextY, rowTextWidth)) {
+                UiTextRender.drawEllipsized(graphics, font, entries.get(i).getString(), rowTextX, rowTextY, rowTextWidth, 0xFFFFFF);
+            }
         }
         graphics.disableScissor();
     }
@@ -126,5 +153,72 @@ public final class UiListPanel {
 
     private boolean contains(double mouseX, double mouseY) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+    }
+
+    private static boolean renderStructuredEntry(
+            GuiGraphics graphics,
+            Font font,
+            String text,
+            int x,
+            int y,
+            int width
+    ) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        String[] pipeColumns = Arrays.stream(text.split("\\|"))
+                .map(String::trim)
+                .toArray(String[]::new);
+        if (pipeColumns.length == 2) {
+            int rightWidth = Math.max(48, Math.min(120, width / 3));
+            int leftWidth = Math.max(24, width - rightWidth - 8);
+            UiTextRender.drawEllipsized(graphics, font, pipeColumns[0], x, y, leftWidth, 0xFFFFFF);
+            UiTextRender.drawRightAligned(graphics, font, pipeColumns[1], x + width, y, rightWidth, 0xE8F0FF);
+            return true;
+        }
+        if (pipeColumns.length >= 3) {
+            String left = pipeColumns[0];
+            String right = pipeColumns[pipeColumns.length - 1];
+            String middle = String.join(" | ", Arrays.asList(pipeColumns).subList(1, pipeColumns.length - 1));
+
+            int leftWidth = Math.max(36, Math.min(64, width / 4));
+            int rightWidth = Math.max(40, Math.min(88, width / 4));
+            int middleX = x + leftWidth + 6;
+            int middleWidth = Math.max(24, width - leftWidth - rightWidth - 12);
+
+            UiTextRender.drawEllipsized(graphics, font, left, x, y, leftWidth, 0xBFD0E8);
+            UiTextRender.drawEllipsized(graphics, font, middle, middleX, y, middleWidth, 0xFFFFFF);
+            UiTextRender.drawRightAligned(graphics, font, right, x + width, y, rightWidth, 0xE8F0FF);
+            return true;
+        }
+
+        int colonIndex = text.indexOf(':');
+        if (colonIndex > 0 && colonIndex < text.length() - 1) {
+            String label = text.substring(0, colonIndex + 1).trim();
+            String value = text.substring(colonIndex + 1).trim();
+            if (label.length() <= 24 && !value.isBlank()) {
+                int labelWidth = Math.max(40, Math.min(112, width / 2));
+                UiTextRender.drawLabelValue(graphics, font, label, value, x, y, width, labelWidth, 0xC7D7F1, 0xEAF1FF);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @FunctionalInterface
+    public interface RowRenderer {
+        void render(
+                GuiGraphics graphics,
+                Font font,
+                int rowIndex,
+                Component entry,
+                int rowX,
+                int rowY,
+                int rowWidth,
+                int rowHeight,
+                boolean selected
+        );
     }
 }
