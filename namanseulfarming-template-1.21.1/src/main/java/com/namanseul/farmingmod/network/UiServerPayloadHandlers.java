@@ -202,7 +202,6 @@ public final class UiServerPayloadHandlers {
                 resolveItem(itemId);
                 result = ShopUiService.buy(player.getUUID(), itemId, quantity);
                 grantPlayerInventoryItem(player, itemId, quantity);
-                PlayerShopListingService.adjustListingQuantity(player.getUUID(), itemId, -quantity);
             }
             case SHOP_SELL -> {
                 String itemId = readItemId(requestPayload);
@@ -210,15 +209,12 @@ public final class UiServerPayloadHandlers {
                 ensurePlayerHasInventoryItem(player, itemId, quantity);
                 result = ShopUiService.sell(player.getUUID(), itemId, quantity);
                 consumePlayerInventoryItem(player, itemId, quantity, -1);
-                PlayerShopListingService.adjustListingQuantity(player.getUUID(), itemId, quantity);
             }
             case SHOP_REGISTER -> {
                 String itemId = readItemId(requestPayload);
                 int quantity = readQuantity(requestPayload);
-                String itemName = readOptionalString(requestPayload, "itemName", itemId);
                 int slot = readInt(requestPayload, "slot", -1);
-                consumePlayerInventoryItem(player, itemId, quantity, slot);
-                JsonObject listing = PlayerShopListingService.registerListing(player.getUUID(), itemId, itemName, quantity);
+                JsonObject listing = PlayerShopListingService.registerListing(player, itemId, quantity, slot);
                 JsonObject response = new JsonObject();
                 response.addProperty("registered", true);
                 response.add("listing", listing);
@@ -226,27 +222,12 @@ public final class UiServerPayloadHandlers {
             }
             case SHOP_CANCEL_SELL -> {
                 String itemId = readItemId(requestPayload);
-                JsonObject listing = PlayerShopListingService.getListing(player.getUUID(), itemId);
-                if (listing == null) {
-                    throw new IllegalArgumentException("listing not found");
-                }
-                int quantity = Math.max(1, readInt(listing, "listingQuantity", 1));
-                String itemName = readOptionalString(listing, "itemName", itemId);
-                JsonElement mailResult = BackendMailBridge.sendItemRewardMail(
-                        player.getUUID().toString(),
-                        "Shop Sell Canceled",
-                        "Canceled sell listing has been returned by mail.",
-                        itemId,
-                        quantity
-                );
-                JsonObject removed = PlayerShopListingService.removeListing(player.getUUID(), itemId);
+                JsonObject removed = PlayerShopListingService.cancelListing(player, itemId);
                 JsonObject response = new JsonObject();
-                response.addProperty("canceled", removed != null);
-                if (removed != null) {
-                    response.add("listing", removed);
-                }
-                response.add("mail", mailResult);
-                response.addProperty("itemName", itemName);
+                response.addProperty("canceled", true);
+                response.add("listing", removed);
+                response.addProperty("returnedToInventory", true);
+                response.addProperty("itemName", readOptionalString(removed, "itemName", itemId));
                 result = response;
             }
             default -> throw new IllegalArgumentException("unsupported shop action");

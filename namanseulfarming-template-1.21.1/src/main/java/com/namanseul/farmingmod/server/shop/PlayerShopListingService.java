@@ -6,17 +6,25 @@ import com.google.gson.JsonObject;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 public final class PlayerShopListingService {
-    private static final ConcurrentMap<UUID, ConcurrentMap<String, ListingEntry>> LISTINGS = new ConcurrentHashMap<>();
+    private static final String STORAGE_KEY = "nfsShopListings";
 
     private PlayerShopListingService() {}
 
     public static JsonElement mergeShopList(UUID playerUuid, JsonElement backendResult) {
         JsonArray merged = extractShopArray(backendResult);
-        ConcurrentMap<String, ListingEntry> playerListings = LISTINGS.get(playerUuid);
+        Map<String, ListingEntry> playerListings = readListings(playerUuid);
         if (playerListings == null || playerListings.isEmpty()) {
             return merged;
         }
@@ -65,27 +73,40 @@ public final class PlayerShopListingService {
         return listing.toShopItemJson();
     }
 
-    public static JsonObject registerListing(UUID playerUuid, String itemId, String itemName, int quantity) {
-        ConcurrentMap<String, ListingEntry> playerListings =
-                LISTINGS.computeIfAbsent(playerUuid, ignored -> new ConcurrentHashMap<>());
-        ListingEntry existing = playerListings.get(itemId);
-
-        int nextQuantity = quantity;
-        long createdAtEpochMillis = System.currentTimeMillis();
-        if (existing != null) {
-            nextQuantity = Math.max(1, existing.quantity + quantity);
-            createdAtEpochMillis = existing.createdAtEpochMillis;
+    /** Inventory and escrow share the same player save. Call only on the server thread. */
+    public static JsonObject registerListing(ServerPlayer player, String itemId, int quantity, int preferredSlot) {
+        ListingEntry existing = readListings(player.getUUID()).get(itemId);
+        if (existing != null) Math.addExact(existing.quantity, quantity);
+        if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
+        List<ItemStack> inventory = player.getInventory().items;
+        List<Integer> slots = new ArrayList<>();
+        if (preferredSlot >= 0 && preferredSlot < inventory.size()) slots.add(preferredSlot);
+        for (int i = 0; i < inventory.size(); i++) if (i != preferredSlot) slots.add(i);
+        List<ItemStack> captured = new ArrayList<>();
+        Map<Integer, Integer> taken = new LinkedHashMap<>();
+        int remaining = quantity;
+        for (int slot : slots) {
+            ItemStack stack = inventory.get(slot);
+            if (stack.isEmpty() || !BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().equals(itemId)) continue;
+            int count = Math.min(remaining, stack.getCount());
+            if (count == 0) break;
+            captured.add(stack.copyWithCount(count));
+            taken.put(slot, count);
+            remaining -= count;
         }
-
-        ListingEntry updated = new ListingEntry(
-                itemId,
-                normalizeName(itemId, itemName),
-                "player_listing",
-                nextQuantity,
-                createdAtEpochMillis
-        );
-        playerListings.put(itemId, updated);
-        return updated.toShopItemJson();
+        if (remaining != 0) throw new IllegalArgumentException("not enough items in main inventory");
+        CompoundTag listings = player.getPersistentData().getCompound(STORAGE_KEY).copy();
+        CompoundTag entry = listings.getCompound(itemId).copy();
+        ListTag stacks = entry.getList("stacks", 10).copy();
+        // Serialize before mutating inventory: codec errors leave the player's items untouched.
+        for (ItemStack stack : captured) stacks.add(stack.save(player.registryAccess()));
+        entry.put("stacks", stacks);
+        if (!entry.contains("createdAt")) entry.putLong("createdAt", System.currentTimeMillis());
+        listings.put(itemId, entry);
+        for (var take : taken.entrySet()) inventory.get(take.getKey()).shrink(take.getValue());
+        player.getPersistentData().put(STORAGE_KEY, listings);
+        changed(player);
+        return getListing(player.getUUID(), itemId);
     }
 
     public static JsonObject getListing(UUID playerUuid, String itemId) {
@@ -93,57 +114,66 @@ public final class PlayerShopListingService {
         return entry == null ? null : entry.toShopItemJson();
     }
 
-    public static JsonObject removeListing(UUID playerUuid, String itemId) {
-        ConcurrentMap<String, ListingEntry> playerListings = LISTINGS.get(playerUuid);
-        if (playerListings == null) {
-            return null;
-        }
-
-        ListingEntry removed = playerListings.remove(itemId);
-        if (playerListings.isEmpty()) {
-            LISTINGS.remove(playerUuid);
-        }
-        return removed == null ? null : removed.toShopItemJson();
-    }
-
-    public static int listingQuantity(UUID playerUuid, String itemId) {
-        ListingEntry entry = getListingEntry(playerUuid, itemId);
-        return entry == null ? 0 : entry.quantity;
-    }
-
-    public static JsonObject adjustListingQuantity(UUID playerUuid, String itemId, int delta) {
-        if (delta == 0) {
-            return getListing(playerUuid, itemId);
-        }
-
-        ConcurrentMap<String, ListingEntry> playerListings = LISTINGS.get(playerUuid);
-        if (playerListings == null) {
-            return null;
-        }
-
-        ListingEntry existing = playerListings.get(itemId);
-        if (existing == null) {
-            return null;
-        }
-
-        int nextQuantity = existing.quantity + delta;
-        if (nextQuantity <= 0) {
-            playerListings.remove(itemId);
-            if (playerListings.isEmpty()) {
-                LISTINGS.remove(playerUuid);
+    public static JsonObject cancelListing(ServerPlayer player, String itemId) {
+        JsonObject listing = getListing(player.getUUID(), itemId);
+        if (listing == null) throw new IllegalArgumentException("listing not found");
+        CompoundTag listings = player.getPersistentData().getCompound(STORAGE_KEY).copy();
+        ListTag stored = listings.getCompound(itemId).getList("stacks", 10);
+        List<ItemStack> planned = new ArrayList<>();
+        for (ItemStack stack : player.getInventory().items) planned.add(stack.copy());
+        for (int i = 0; i < stored.size(); i++) {
+            ItemStack returning = ItemStack.parse(player.registryAccess(), stored.getCompound(i))
+                    .orElseThrow(() -> new IllegalStateException("listing contains an unreadable item; retained for recovery"));
+            if (returning.isEmpty()) throw new IllegalStateException("listing contains an empty item; retained for recovery");
+            for (ItemStack target : planned) {
+                if (!target.isEmpty() && ItemStack.isSameItemSameComponents(target, returning)) {
+                    int count = Math.min(returning.getCount(), Math.max(0, Math.min(64, target.getMaxStackSize()) - target.getCount()));
+                    target.grow(count);
+                    returning.shrink(count);
+                }
             }
-            return null;
+            for (int slot = 0; slot < planned.size() && !returning.isEmpty(); slot++) {
+                if (planned.get(slot).isEmpty()) {
+                    int count = Math.min(returning.getCount(), Math.min(64, returning.getMaxStackSize()));
+                    planned.set(slot, returning.copyWithCount(count));
+                    returning.shrink(count);
+                }
+            }
+            if (!returning.isEmpty()) throw new IllegalArgumentException("inventory full; listing retained, free space and retry");
         }
+        for (int i = 0; i < planned.size(); i++) player.getInventory().items.set(i, planned.get(i));
+        listings.remove(itemId);
+        player.getPersistentData().put(STORAGE_KEY, listings);
+        changed(player);
+        return listing;
+    }
 
-        ListingEntry updated = new ListingEntry(
-                existing.itemId,
-                existing.itemName,
-                existing.category,
-                nextQuantity,
-                existing.createdAtEpochMillis
-        );
-        playerListings.put(itemId, updated);
-        return updated.toShopItemJson();
+    private static void changed(ServerPlayer player) {
+        player.getInventory().setChanged();
+        player.containerMenu.broadcastChanges();
+        player.getServer().getPlayerList().save(player);
+    }
+
+    private static Map<String, ListingEntry> readListings(UUID playerUuid) {
+        Map<String, ListingEntry> result = new LinkedHashMap<>();
+        var server = ServerLifecycleHooks.getCurrentServer();
+        ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(playerUuid);
+        if (player == null) return result;
+        CompoundTag listings = player.getPersistentData().getCompound(STORAGE_KEY);
+        for (String itemId : listings.getAllKeys()) {
+            CompoundTag entry = listings.getCompound(itemId);
+            ListTag stacks = entry.getList("stacks", 10);
+            int quantity = 0;
+            String name = itemId;
+            for (int i = 0; i < stacks.size(); i++) {
+                ItemStack stack = ItemStack.parse(player.registryAccess(), stacks.getCompound(i))
+                        .orElseThrow(() -> new IllegalStateException("unreadable listing; retained for recovery"));
+                quantity = Math.addExact(quantity, stack.getCount());
+                if (i == 0) name = stack.getHoverName().getString();
+            }
+            result.put(itemId, new ListingEntry(itemId, name, "player_listing", quantity, entry.getLong("createdAt")));
+        }
+        return result;
     }
 
     private static JsonArray extractShopArray(JsonElement backendResult) {
@@ -174,22 +204,8 @@ public final class PlayerShopListingService {
         return new JsonArray();
     }
 
-    private static String normalizeName(String itemId, String itemName) {
-        if (itemName != null && !itemName.isBlank()) {
-            return itemName;
-        }
-        if (itemId == null || itemId.isBlank()) {
-            return "listed item";
-        }
-        return itemId;
-    }
-
     private static ListingEntry getListingEntry(UUID playerUuid, String itemId) {
-        ConcurrentMap<String, ListingEntry> playerListings = LISTINGS.get(playerUuid);
-        if (playerListings == null) {
-            return null;
-        }
-        return playerListings.get(itemId);
+        return readListings(playerUuid).get(itemId);
     }
 
     private static void applyListingMetadata(JsonObject target, ListingEntry listing) {
@@ -210,7 +226,7 @@ public final class PlayerShopListingService {
         mergeReasonTag(target, "player_listing");
         String summary = readString(target, "pricingSummary");
         if (summary == null || summary.isBlank()) {
-            target.addProperty("pricingSummary", "Registered by player. Cancel sell to return by mail.");
+            target.addProperty("pricingSummary", "Registered by player. Cancel sell to return original items to inventory.");
         }
     }
 
@@ -257,7 +273,7 @@ public final class PlayerShopListingService {
             json.addProperty("sellPrice", 0);
             json.addProperty("currentBuyPrice", 0);
             json.addProperty("currentSellPrice", 0);
-            json.addProperty("pricingSummary", "Registered by player. Cancel sell to return by mail.");
+            json.addProperty("pricingSummary", "Registered by player. Cancel sell to return original items to inventory.");
 
             JsonArray reasonTags = new JsonArray();
             reasonTags.add("player_listing");

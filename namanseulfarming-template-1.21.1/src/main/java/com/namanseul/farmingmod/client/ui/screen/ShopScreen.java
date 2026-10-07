@@ -839,7 +839,8 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = false;
         if (!payload.success()) {
-            showFailure("Could not update listing.");
+            showFailure(payload.error() == null || payload.error().isBlank()
+                    ? "Could not update listing." : payload.error());
             updateActionButtons();
             return;
         }
@@ -848,7 +849,7 @@ public final class ShopScreen extends BaseGameScreen {
             statusMessage = "Item listed for sale.";
             tryApplyListingFromActionResponse(payload.dataJson());
         } else {
-            statusMessage = "Listing canceled.";
+            statusMessage = "Listing canceled. Original items returned to inventory.";
         }
         requestItemList(true);
         updateActionButtons();
