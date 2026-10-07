@@ -25,9 +25,21 @@ public final class BackendMailBridge {
         return sendGet("/mail/" + encodedPlayerId);
     }
 
-    public static JsonElement claimMail(String mailId) throws MailBridgeException {
-        String encodedMailId = URLEncoder.encode(mailId, StandardCharsets.UTF_8);
-        return sendPost("/mail/" + encodedMailId + "/claim");
+    public static MailClaimProtocol.Outcome claimReceipt(String playerId, String mailId, String requestId) throws MailBridgeException {
+        JsonObject body = new JsonObject();
+        body.addProperty("playerId", playerId);
+        body.addProperty("requestId", requestId);
+        HttpRequest request = HttpRequest.newBuilder(buildUri("/mail/" + mailId + "/claim"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .timeout(Duration.ofMillis(Config.backendTimeoutMs())).build();
+        try {
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            return MailClaimProtocol.parse(playerId, requestId, mailId, response.statusCode(), response.body());
+        } catch (Exception ex) {
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new MailBridgeException("Mail confirmation unavailable; original claim remains queued.");
+        }
     }
 
     public static JsonElement sendItemRewardMail(

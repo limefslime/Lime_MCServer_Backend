@@ -36,6 +36,8 @@ class MailServiceError extends Error {
 
 export const mailErrorCode = {
   INVALID_INPUT: "INVALID_INPUT",
+  REQUEST_CONFLICT: "REQUEST_CONFLICT",
+  INVALID_ITEM_REWARD: "INVALID_ITEM_REWARD",
   MAIL_NOT_FOUND: "MAIL_NOT_FOUND",
   MAIL_ALREADY_CLAIMED: "MAIL_ALREADY_CLAIMED",
 };
@@ -56,11 +58,11 @@ function validatePlayerId(playerId) {
   }
 }
 
-function validateMailId(mailId) {
+function validateMailId(mailId, fieldName = "mailId") {
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (typeof mailId !== "string" || !uuidRegex.test(mailId)) {
-    throw new MailServiceError(mailErrorCode.INVALID_INPUT, "mailId must be a valid uuid");
+    throw new MailServiceError(mailErrorCode.INVALID_INPUT, `${fieldName} must be a valid uuid`);
   }
 }
 
@@ -95,7 +97,7 @@ function validateItemReward(itemReward) {
   const isObject = typeof itemReward === "object" && itemReward !== null;
   const hasItemId =
     isObject && typeof itemReward.itemId === "string" && itemReward.itemId.trim().length > 0;
-  const hasQuantity = isObject && Number.isInteger(itemReward.quantity) && itemReward.quantity > 0;
+  const hasQuantity = isObject && Number.isInteger(itemReward.quantity) && itemReward.quantity > 0 && itemReward.quantity <= MAX_INT_32;
 
   if (!isObject || !hasItemId || !hasQuantity) {
     throw new MailServiceError(
@@ -164,7 +166,7 @@ function extractItemRewardFromMessage(message) {
 }
 
 function hasItemRewardTag(message) {
-  return typeof message === "string" && message.includes(ITEM_REWARD_TAG_PREFIX);
+  return typeof message === "string" && /\[item_reward:/i.test(message);
 }
 
 function encodeItemRewardToMessage(message, itemReward) {
@@ -409,27 +411,53 @@ export async function getMailbox(playerId) {
   return rows.map(buildMailListItem);
 }
 
-export async function claimMail(mailId) {
+export async function claimMail(mailId, input = {}, transaction = withTransaction) {
   validateMailId(mailId);
+  const protectedClaim = input.playerId !== undefined || input.requestId !== undefined;
+  let playerId = input.playerId, requestId = input.requestId;
+  if (protectedClaim) {
+    validatePlayerId(playerId);
+    validateMailId(requestId, "requestId");
+    playerId = playerId.toLowerCase();
+    requestId = requestId.toLowerCase();
+  }
+  mailId = mailId.toLowerCase();
 
-  return withTransaction(async (client) => {
-    const claimedMail = await markMailClaimed(mailId, client);
-    if (!claimedMail) {
-      await resolveClaimFailure(mailId, client);
+  return transaction(async (client) => {
+    // All claim paths lock wallet before mail, matching the shop/reward lock order.
+    if (!protectedClaim) playerId = (await getMailOrThrow(mailId, client)).player_id;
+    await ensurePlayerAndWallet(playerId, client);
+    await client.query('SELECT player_id FROM wallets WHERE player_id=$1 FOR UPDATE', [playerId]);
+    if (protectedClaim) {
+      const { rows: [receipt] } = await client.query(
+        'SELECT mail_id,result FROM mail_claim_receipts WHERE player_id=$1 AND request_id=$2',
+        [playerId, requestId]);
+      if (receipt) {
+        if (receipt.mail_id !== mailId) throw new MailServiceError(mailErrorCode.REQUEST_CONFLICT, 'requestId reused for another mail');
+        return { ...receipt.result, replayed: true };
+      }
     }
-
-    const mailRow = claimedMail ?? (await getMailOrThrow(mailId, client));
-    await ensurePlayerAndWallet(mailRow.player_id, client);
-
-    const walletAfter = await applyMailReward({
-      mailRow,
-      executor: client,
-    });
-
-    return buildClaimResult({
-      mailRow,
-      walletRow: walletAfter,
-    });
+    const mail = await getMailById(mailId, client, { forUpdate: true });
+    if (!mail || mail.player_id !== playerId) {
+      throw new MailServiceError(mailErrorCode.MAIL_NOT_FOUND, 'mail not found');
+    }
+    if (mail.is_claimed) throw new MailServiceError(mailErrorCode.MAIL_ALREADY_CLAIMED, 'mail already claimed');
+    // A malformed item tag must not silently consume a mail without delivering its item.
+    if (hasItemRewardTag(mail.message) && !extractItemRewardFromMessage(mail.message)) {
+      throw new MailServiceError(mailErrorCode.INVALID_ITEM_REWARD, 'mail item reward is invalid; mail retained');
+    }
+    const mailRow = await markMailClaimed(mailId, client);
+    if (!mailRow) await resolveClaimFailure(mailId, client);
+    const walletAfter = await applyMailReward({ mailRow, executor: client });
+    let result = buildClaimResult({ mailRow, walletRow: walletAfter });
+    if (protectedClaim) {
+      result = JSON.parse(JSON.stringify({ ...result, playerId, requestId, replayed: false }));
+      await client.query('INSERT INTO mail_claim_receipts(player_id,request_id,mail_id,result) VALUES($1,$2,$3,$4)',
+        [playerId, requestId, mailId, result]);
+    }
+    await client.query('INSERT INTO integration_audit_outbox(payload) VALUES($1)',
+      [{ event: 'mail_claim', playerId, ...result }]);
+    return result;
   });
 }
 

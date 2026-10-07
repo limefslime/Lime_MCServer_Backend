@@ -8,6 +8,9 @@ import com.namanseul.farmingmod.network.UiScreenType;
 import com.namanseul.farmingmod.network.payload.UiRequestPayload;
 import com.namanseul.farmingmod.network.payload.UiResponsePayload;
 import com.namanseul.farmingmod.server.player.PlayerActivityTracker;
+import com.namanseul.farmingmod.server.mail.BackendMailBridge;
+import com.namanseul.farmingmod.server.mail.MailClaimProtocol;
+import com.namanseul.farmingmod.server.mail.MailUiService;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -118,6 +121,44 @@ public final class ShopTradeJournal {
         recover(player);
     }
 
+    public static void submitMail(ServerPlayer player, UiRequestPayload payload, String mailId) {
+        String clientId = UUID.fromString(payload.requestId()).toString();
+        if (!clientId.equals(payload.requestId())) throw new IllegalArgumentException("invalid mail request UUID");
+        mailId = UUID.fromString(mailId).toString();
+        if (DIRTY.contains(player.getUUID())) persist(player);
+        notifyDeferred(player);
+        CompoundTag journal = root(player).copy();
+        CompoundTag completed = journal.getCompound("completed");
+        if (completed.contains(clientId)) {
+            CompoundTag record = completed.getCompound(clientId);
+            match(record, "mail", mailId, 0);
+            reply(player, clientId, "mail", record.getBoolean("accepted"), record.getString("result"));
+            return;
+        }
+        if (journal.contains("pending")) {
+            CompoundTag pending = journal.getCompound("pending");
+            if (!clientId.equals(pending.getString("clientId"))) {
+                throw new IllegalArgumentException("An earlier trade or mail claim is still being recovered.");
+            }
+            match(pending, "mail", mailId, 0);
+        } else {
+            CompoundTag pending = new CompoundTag();
+            pending.putString("clientId", clientId);
+            pending.putString("requestId", UUID.randomUUID().toString());
+            pending.putString("transactionType", "mail");
+            pending.putString("itemId", mailId);
+            pending.putInt("quantity", 0);
+            pending.putString("phase", "queued");
+            journal.put("pending", pending);
+            player.getPersistentData().put(KEY, journal);
+            persist(player);
+        }
+        JsonObject waiting = new JsonObject();
+        waiting.addProperty("pending", true);
+        sendSuccess(player, clientId, "mail", waiting.toString());
+        recover(player);
+    }
+
     public static void clonePlayer(PlayerEvent.Clone event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         // NeoForge replaces the player on death; custom escrow must survive that replacement.
@@ -162,7 +203,12 @@ public final class ShopTradeJournal {
         var server = player.getServer();
         HTTP.execute(() -> {
             ShopTradeProtocol.Outcome outcome;
-            try { outcome = BackendShopBridge.trade(request); }
+            try {
+                if (request.transactionType().equals("mail")) {
+                    var mail = BackendMailBridge.claimReceipt(request.playerId(), request.itemId(), request.requestId());
+                    outcome = new ShopTradeProtocol.Outcome(mail.accepted(), mail.result());
+                } else outcome = BackendShopBridge.trade(request);
+            }
             catch (Exception ex) { BUSY.remove(requestId); return; }
             server.execute(() -> {
                 try {
@@ -197,11 +243,20 @@ public final class ShopTradeJournal {
         ShopTradeProtocol.Request request = new ShopTradeProtocol.Request(player.getUUID().toString(),
                 pending.getString("requestId"), type, pending.getString("itemId"), pending.getInt("quantity"));
         int status = accepted ? 200 : rejectionStatus(result.get("code").getAsString());
-        if (ShopTradeProtocol.parse(request, status, result.toString()).accepted() != accepted) {
+        boolean verified = type.equals("mail")
+                ? MailClaimProtocol.parse(request.playerId(), request.requestId(), request.itemId(), status, result.toString()).accepted()
+                : ShopTradeProtocol.parse(request, status, result.toString()).accepted();
+        if (verified != accepted) {
             throw new IllegalStateException("invalid saved trade outcome");
         }
         List<ItemStack> returning = new ArrayList<>();
-        if (accepted && type.equals("buy")) {
+        if (accepted && type.equals("mail")) {
+            var item = result.getAsJsonObject("rewardInfo").get("itemReward");
+            if (!item.isJsonNull()) {
+                JsonObject reward = item.getAsJsonObject();
+                returning.add(new ItemStack(resolve(reward.get("itemId").getAsString()), reward.get("quantity").getAsInt()));
+            }
+        } else if (accepted && type.equals("buy")) {
             returning.add(new ItemStack(resolve(pending.getString("itemId")), pending.getInt("quantity")));
         } else if (!accepted && type.equals("sell")) {
             ListTag held = pending.getList("held", 10);
@@ -230,7 +285,10 @@ public final class ShopTradeJournal {
         persist(player);
         ShopUiService.invalidateReadCaches();
         if (accepted) {
-            try { PlayerActivityTracker.recordShopTrade(player.getUUID(), action(type), result); }
+            try {
+                if (type.equals("mail")) PlayerActivityTracker.recordMailClaim(player.getUUID(), result);
+                else PlayerActivityTracker.recordShopTrade(player.getUUID(), action(type), result);
+            }
             catch (Exception ignored) { /* ancillary tracking does not undo delivery */ }
         }
         notifyDeferred(player);
@@ -243,13 +301,14 @@ public final class ShopTradeJournal {
         // Reconnected players may have loaded an earlier atomic save and still be pending.
         if (!root(player).getCompound("completed").contains(clientId)) return;
         ShopUiService.invalidateReadCaches();
+        MailUiService.invalidate(player.getUUID());
         reply(player, clientId, record.getString("transactionType"), record.getBoolean("accepted"), record.getString("result"));
     }
 
     private static int rejectionStatus(String code) {
         return switch (code) {
             case "INVALID_INPUT", "ITEM_PRICE_NOT_TRADABLE", "SELL_QUANTITY_TOO_LARGE" -> 400;
-            case "ITEM_NOT_FOUND" -> 404;
+            case "ITEM_NOT_FOUND", "MAIL_NOT_FOUND" -> 404;
             case "TRADE_COOLDOWN_ACTIVE" -> 429;
             default -> 409;
         };
@@ -290,13 +349,16 @@ public final class ShopTradeJournal {
             throw new IllegalStateException("Trade retained locally; player save could not be verified. Check server storage.", ex);
         }
     }
-    private static UiAction action(String type) { return type.equals("buy") ? UiAction.SHOP_BUY : UiAction.SHOP_SELL; }
+    private static UiAction action(String type) {
+        return type.equals("mail") ? UiAction.MAIL_CLAIM : type.equals("buy") ? UiAction.SHOP_BUY : UiAction.SHOP_SELL;
+    }
+    private static UiScreenType screen(String type) { return type.equals("mail") ? UiScreenType.MAIL : UiScreenType.SHOP; }
     private static void sendSuccess(ServerPlayer player, String clientId, String type, String json) {
-        PacketDistributor.sendToPlayer(player, UiResponsePayload.successJson(clientId, UiScreenType.SHOP, action(type), json));
+        PacketDistributor.sendToPlayer(player, UiResponsePayload.successJson(clientId, screen(type), action(type), json));
     }
     private static void reply(ServerPlayer player, String clientId, String type, boolean accepted, String json) {
         if (accepted) sendSuccess(player, clientId, type, json);
-        else PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(clientId, UiScreenType.SHOP, action(type),
+        else PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(clientId, screen(type), action(type),
                 JsonParser.parseString(json).getAsJsonObject().get("message").getAsString()));
     }
     private static void warn() {

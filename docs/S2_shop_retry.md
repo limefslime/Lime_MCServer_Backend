@@ -12,7 +12,7 @@
 
 ## 범위와 다음 단계
 
-이번 Java 서버는 `ShopTradeJournal`을 통해 서버 생성 requestId와 영속 결제 대기열을 사용한다. 응답 단계, 완료 기록과 물품 지급·회수는 플레이어 저장에 기록한다. 구현/실게임 검증 범위는 S2_game_trade_recovery.md를 참고한다. 이전 Java 서버의 requestId 없는 요청은 재시도 보호 대상이 아니다. 우편 수령 복구와 기존 상점 API 전체 인증은 별도 작업이다.
+이번 Java 서버는 `ShopTradeJournal`을 통해 서버 생성 requestId와 영속 결제 대기열을 사용한다. 응답 단계, 완료 기록과 물품 지급·회수는 플레이어 저장에 기록한다. 구현/실게임 검증 범위는 S2_game_trade_recovery.md를 참고한다. 이전 Java 서버의 requestId 없는 요청은 재시도 보호 대상이 아니다. 우편 수령 복구도 같은 대기열로 연결했다(S2_mail_recovery.md). 기존 API 전체 인증은 별도 작업이다.
 
 ## 검증
 

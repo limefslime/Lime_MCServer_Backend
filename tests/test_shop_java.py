@@ -19,10 +19,11 @@ class ShopJavaTests(unittest.TestCase):
             self.skipTest('Java 21 and SHOP_TEST_GSON_JAR required; NeoForge build is separate')
         with tempfile.TemporaryDirectory() as output:
             sources = [JAVA_ROOT / 'ShopTradeProtocol.java', JAVA_ROOT / 'TradeInventoryPlan.java',
+                       JAVA_ROOT.parent / 'mail/MailClaimProtocol.java', ROOT / 'tests/java/MailClaimProtocolTest.java',
                        ROOT / 'tests/java/ShopTradeProtocolTest.java', ROOT / 'tests/java/TradeInventoryPlanTest.java',
                        ROOT / 'tests/java/stubs/net/minecraft/world/item/ItemStack.java']
             subprocess.run([javac, '--release', '21', '-cp', gson, '-d', output, *map(str,sources)], check=True, capture_output=True, text=True)
-            for main in ['ShopTradeProtocolTest', 'TradeInventoryPlanTest']:
+            for main in ['ShopTradeProtocolTest', 'TradeInventoryPlanTest', 'MailClaimProtocolTest']:
                 result = subprocess.run([java, '-cp', output + os.pathsep + gson, main], check=True, capture_output=True, text=True)
                 self.assertIn('passed', result.stdout)
 

@@ -43,15 +43,8 @@ public final class MailUiService {
         throw new MailUiException("mail not found");
     }
 
-    public static JsonElement claim(UUID playerUuid, String mailId)
-            throws BackendMailBridge.MailBridgeException, MailUiException {
-        // Ensure that the requested mail belongs to the requesting player before claim.
-        getMailDetail(playerUuid, mailId, true);
-
-        JsonElement claimed = BackendMailBridge.claimMail(mailId);
-        validateClaimOwner(playerUuid, claimed);
+    public static void invalidate(UUID playerUuid) {
         MAIL_LIST_CACHE.invalidate(playerUuid);
-        return claimed;
     }
 
     private static JsonArray asMailboxArray(JsonElement payload) throws MailUiException {

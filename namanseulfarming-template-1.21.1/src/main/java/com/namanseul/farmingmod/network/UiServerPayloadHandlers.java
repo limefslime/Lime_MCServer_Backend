@@ -273,18 +273,11 @@ public final class UiServerPayloadHandlers {
             }
             case MAIL_CLAIM -> {
                 String mailId = readMailId(requestPayload);
-                result = MailUiService.claim(player.getUUID(), mailId);
-                applyMailClaimItemReward(player, result);
+                try { ShopTradeJournal.submitMail(player, payload, mailId); }
+                catch (IllegalStateException ex) { throw new IllegalArgumentException(ex.getMessage()); }
+                return;
             }
             default -> throw new IllegalArgumentException("unsupported mail action");
-        }
-
-        if (payload.action() == UiAction.MAIL_CLAIM) {
-            try {
-                PlayerActivityTracker.recordMailClaim(player.getUUID(), result);
-            } catch (Exception ignored) {
-                // activity tracking must never break core flow
-            }
         }
 
         PacketDistributor.sendToPlayer(
@@ -707,26 +700,6 @@ public final class UiServerPayloadHandlers {
             throw new IllegalArgumentException("itemId is unknown");
         }
         return item;
-    }
-
-    private static void applyMailClaimItemReward(ServerPlayer player, JsonElement claimPayload) {
-        JsonObject itemReward = findItemRewardObject(claimPayload);
-        if (itemReward == null) {
-            return;
-        }
-
-        String itemId = readOptionalString(itemReward, "itemId", "");
-        int quantity = readInt(itemReward, "quantity", 0);
-        if (itemId.isBlank() || quantity <= 0) {
-            return;
-        }
-
-        try {
-            grantPlayerInventoryItem(player, itemId, quantity);
-        } catch (Exception ex) {
-            NamanseulFarming.LOGGER.warn("[UI] mail item reward grant skipped player={} itemId={} quantity={} error={}",
-                    player.getGameProfile().getName(), itemId, quantity, ex.toString());
-        }
     }
 
     @Nullable
