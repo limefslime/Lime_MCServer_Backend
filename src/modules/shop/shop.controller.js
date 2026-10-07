@@ -31,6 +31,7 @@ function handleShopError(error, res) {
   }
 
   if (
+    error.code === shopErrorCode.REQUEST_CONFLICT ||
     error.code === shopErrorCode.ITEM_INACTIVE ||
     error.code === shopErrorCode.INSUFFICIENT_BALANCE ||
     error.code === shopErrorCode.INSUFFICIENT_STOCK

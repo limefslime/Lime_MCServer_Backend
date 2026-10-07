@@ -23,7 +23,7 @@ Create JAR 안에 Registrate, Flywheel, Ponder가 포함된다. 기존 S2의 Sod
 3. 새 ZIP을 CurseForge에 가져온다. EconomyCraft와 기존 운영 데이터는 포함되지 않는다.
 4. Java 21에서 우리 모드 프로젝트의 `gradlew build` 실행 후 JAR을 클라이언트와 서버에 설치한다.
    생성 팩은 우리 모드 JAR을 자동 다운로드하지 않는다. JAR 설치 전 퀘스트 보상을 수령하지 않는다.
-5. 기존 DB 마이그레이션 001~016이 적용된 DB에 `019_add_integration_rewards.sql`을 적용한다.
+5. 기존 DB 마이그레이션 001~016이 적용된 DB에 `019_add_integration_rewards.sql` → `020_add_shop_trade_receipts.sql` 순서로 적용한 뒤 백엔드를 업데이트한다. 기존 DB는 SQL 파일을 수동 적용해야 한다.
    017/018은 별도 작업 브랜치의 번호이므로 이 변경에서 덮어쓰지 않는다.
 6. 백엔드: `INTEGRATION_API_TOKEN`에 32자 이상의 서버 전용 비밀값을 지정한다.
    Minecraft 서버: 같은 값을 `NFS_INTEGRATION_API_TOKEN`에 지정한다.
