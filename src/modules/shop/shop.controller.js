@@ -9,11 +9,21 @@ import {
   shopErrorCode,
 } from "./shop.service.js";
 
-function handleShopError(error, res) {
+function handleShopError(error, res, request = null) {
   if (!isShopServiceError(error)) {
     console.error("[shop.controller] unexpected error", error);
     res.status(500).json({ message: "internal server error" });
     return;
+  }
+
+  const response = { message: error.message };
+  // Only known, rolled-back service failures may release game-side escrow.
+  if (request?.requestId !== undefined) {
+    Object.assign(response, {
+      code: error.code, requestId: request.requestId,
+      playerId: request.playerId, itemId: request.itemId,
+      quantity: request.quantity, transactionType: request.transactionType,
+    });
   }
 
   if (
@@ -21,12 +31,12 @@ function handleShopError(error, res) {
     error.code === shopErrorCode.ITEM_PRICE_NOT_TRADABLE ||
     error.code === shopErrorCode.SELL_QUANTITY_TOO_LARGE
   ) {
-    res.status(400).json({ message: error.message });
+    res.status(400).json(response);
     return;
   }
 
   if (error.code === shopErrorCode.ITEM_NOT_FOUND) {
-    res.status(404).json({ message: error.message });
+    res.status(404).json(response);
     return;
   }
 
@@ -36,12 +46,12 @@ function handleShopError(error, res) {
     error.code === shopErrorCode.INSUFFICIENT_BALANCE ||
     error.code === shopErrorCode.INSUFFICIENT_STOCK
   ) {
-    res.status(409).json({ message: error.message });
+    res.status(409).json(response);
     return;
   }
 
   if (error.code === shopErrorCode.TRADE_COOLDOWN_ACTIVE) {
-    res.status(429).json({ message: error.message });
+    res.status(429).json(response);
     return;
   }
 
@@ -71,7 +81,7 @@ export async function buyItemController(req, res) {
     const result = await buyItem(req.body);
     res.json(result);
   } catch (error) {
-    handleShopError(error, res);
+    handleShopError(error, res, { ...req.body, transactionType: "buy" });
   }
 }
 
@@ -80,7 +90,7 @@ export async function sellItemController(req, res) {
     const result = await sellItem(req.body);
     res.json(result);
   } catch (error) {
-    handleShopError(error, res);
+    handleShopError(error, res, { ...req.body, transactionType: "sell" });
   }
 }
 

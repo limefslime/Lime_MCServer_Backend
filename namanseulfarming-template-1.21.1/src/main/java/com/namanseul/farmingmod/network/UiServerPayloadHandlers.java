@@ -21,6 +21,7 @@ import com.namanseul.farmingmod.server.status.StatusUiService;
 import com.namanseul.farmingmod.server.shop.BackendShopBridge;
 import com.namanseul.farmingmod.server.shop.PlayerShopListingService;
 import com.namanseul.farmingmod.server.shop.ShopUiService;
+import com.namanseul.farmingmod.server.shop.ShopTradeJournal;
 import com.namanseul.farmingmod.server.summary.HubSummaryService;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -196,21 +197,16 @@ public final class UiServerPayloadHandlers {
                 int quantity = readQuantity(requestPayload);
                 result = ShopUiService.previewSell(player.getUUID(), itemId, quantity);
             }
-            case SHOP_BUY -> {
-                String itemId = readItemId(requestPayload);
-                int quantity = readQuantity(requestPayload);
-                resolveItem(itemId);
-                result = ShopUiService.buy(player.getUUID(), itemId, quantity);
-                grantPlayerInventoryItem(player, itemId, quantity);
-            }
-            case SHOP_SELL -> {
-                String itemId = readItemId(requestPayload);
-                int quantity = readQuantity(requestPayload);
-                ensurePlayerHasInventoryItem(player, itemId, quantity);
-                result = ShopUiService.sell(player.getUUID(), itemId, quantity);
-                consumePlayerInventoryItem(player, itemId, quantity, -1);
+            case SHOP_BUY, SHOP_SELL -> {
+                try {
+                    ShopTradeJournal.submit(player, payload, readItemId(requestPayload), readQuantity(requestPayload));
+                } catch (IllegalStateException ex) {
+                    throw new IllegalArgumentException(ex.getMessage());
+                }
+                return; // Journal replies after verified completion; queued requests recover asynchronously.
             }
             case SHOP_REGISTER -> {
+                ShopTradeJournal.requireSettled(player);
                 String itemId = readItemId(requestPayload);
                 int quantity = readQuantity(requestPayload);
                 int slot = readInt(requestPayload, "slot", -1);
@@ -221,6 +217,7 @@ public final class UiServerPayloadHandlers {
                 result = response;
             }
             case SHOP_CANCEL_SELL -> {
+                ShopTradeJournal.requireSettled(player);
                 String itemId = readItemId(requestPayload);
                 JsonObject removed = PlayerShopListingService.cancelListing(player, itemId);
                 JsonObject response = new JsonObject();
@@ -231,14 +228,6 @@ public final class UiServerPayloadHandlers {
                 result = response;
             }
             default -> throw new IllegalArgumentException("unsupported shop action");
-        }
-
-        if (payload.action() == UiAction.SHOP_BUY || payload.action() == UiAction.SHOP_SELL) {
-            try {
-                PlayerActivityTracker.recordShopTrade(player.getUUID(), payload.action(), result);
-            } catch (Exception ignored) {
-                // activity tracking must never break core flow
-            }
         }
 
         PacketDistributor.sendToPlayer(

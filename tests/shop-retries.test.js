@@ -140,3 +140,18 @@ test('overlapping first submissions produce one receipt, ledger, stock update an
   const saved = await state(input);
   assert.deepEqual([saved.stock,saved.ledger,saved.trades,saved.receipts,saved.audits],[18,1,1,1,1]);
 });
+
+test('known HTTP rejection includes matching trade identity; legacy validation response stays unchanged', async () => {
+  const input = {playerId:randomUUID(),itemId:'test:fish',quantity:0,requestId:randomUUID()};
+  const invoke = async body => {
+    let status, result;
+    await buyItemController({body}, {status(value) {status=value;return this;}, json(value) {result=value;}});
+    return {status,result};
+  };
+  const response = await invoke(input);
+  assert.equal(response.status,400);
+  assert.deepEqual(response.result, {...input,transactionType:'buy',code:'INVALID_INPUT',
+    message:'quantity must be a positive integer'});
+  const legacy = {...input}; delete legacy.requestId;
+  assert.deepEqual((await invoke(legacy)).result, {message:'quantity must be a positive integer'});
+});

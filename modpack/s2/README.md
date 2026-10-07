@@ -60,3 +60,5 @@ colony별 기금·권한, 창고 출하를 차례로 구현한다. 주식/마을
 
 테스트: `npm test`, `python -m unittest discover -s tests -p 'test_*.py'`.
 DB 테스트는 PGlite PostgreSQL 엔진에서 수행하며 실제 pg 서버의 다중 연결 경합 시험은 별도다.
+
+게임 상점 거래는 백엔드와 이번 Java 모드를 함께 업데이트해야 한다. 플레이어 저장 확인·파일/디렉터리 fsync가 성공한 경우에만 결제 요청을 전송한다. 복구 검증 절차: `docs/S2_game_trade_recovery.md`.

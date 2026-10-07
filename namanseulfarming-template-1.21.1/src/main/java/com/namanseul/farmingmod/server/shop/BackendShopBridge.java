@@ -39,12 +39,23 @@ public final class BackendShopBridge {
         return sendPost("/shop/sell/preview", playerId, itemId, quantity);
     }
 
-    public static JsonElement buyItem(String playerId, String itemId, int quantity) throws ShopBridgeException {
-        return sendPost("/shop/buy", playerId, itemId, quantity);
-    }
-
-    public static JsonElement sellItem(String playerId, String itemId, int quantity) throws ShopBridgeException {
-        return sendPost("/shop/sell", playerId, itemId, quantity);
+    public static ShopTradeProtocol.Outcome trade(ShopTradeProtocol.Request trade) throws ShopBridgeException {
+        JsonObject body = new JsonObject();
+        body.addProperty("playerId", trade.playerId());
+        body.addProperty("requestId", trade.requestId());
+        body.addProperty("itemId", trade.itemId());
+        body.addProperty("quantity", trade.quantity());
+        HttpRequest request = HttpRequest.newBuilder(buildUri("/shop/" + trade.transactionType()))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
+                .timeout(Duration.ofMillis(Config.backendTimeoutMs())).build();
+        try {
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            return ShopTradeProtocol.parse(trade, response.statusCode(), response.body());
+        } catch (Exception ex) {
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new ShopBridgeException("Trade confirmation unavailable; original request remains queued.");
+        }
     }
 
     private static JsonElement sendGet(String path) throws ShopBridgeException {

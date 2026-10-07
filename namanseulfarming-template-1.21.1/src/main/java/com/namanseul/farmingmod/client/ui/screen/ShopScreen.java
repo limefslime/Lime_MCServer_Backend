@@ -797,11 +797,24 @@ public final class ShopScreen extends BaseGameScreen {
         if (pendingTradeRequestId != null && !pendingTradeRequestId.equals(payload.requestId())) {
             return;
         }
+        if (payload.success() && payload.dataJson() != null) {
+            try {
+                var data = com.google.gson.JsonParser.parseString(payload.dataJson()).getAsJsonObject();
+                if (data.has("pending") && data.get("pending").getAsBoolean()) {
+                    tradeLoading = true;
+                    statusMessage = "Trade queued. Waiting for confirmation or inventory space.";
+                    setError(null);
+                    updateActionButtons();
+                    return;
+                }
+            } catch (Exception ignored) { /* final response is parsed below */ }
+        }
         pendingTradeRequestId = null;
         tradeLoading = false;
 
         if (!payload.success()) {
-            showFailure("Trade failed. Please try again.");
+            showFailure(payload.error() == null || payload.error().isBlank()
+                    ? "Trade confirmation unavailable. Check the queued trade before submitting again." : payload.error());
             updateActionButtons();
             return;
         }
