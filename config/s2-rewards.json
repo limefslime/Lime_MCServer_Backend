@@ -1,0 +1,158 @@
+{
+  "2ABBEEB3F9BF1017": {
+    "amount": 70,
+    "cooldownSeconds": 0
+  },
+  "0DB515F2D80D3BA7": {
+    "amount": 70,
+    "cooldownSeconds": 0
+  },
+  "1966EA9C7559CBDE": {
+    "amount": 150,
+    "cooldownSeconds": 0
+  },
+  "10346A6BA9110100": {
+    "amount": 250,
+    "cooldownSeconds": 0
+  },
+  "1A037748CB8156B7": {
+    "amount": 250,
+    "cooldownSeconds": 0
+  },
+  "6194A635874E4765": {
+    "amount": 500,
+    "cooldownSeconds": 0
+  },
+  "3BBF6E8596ECE31C": {
+    "amount": 500,
+    "cooldownSeconds": 0
+  },
+  "6A857CEF4BF12C14": {
+    "amount": 750,
+    "cooldownSeconds": 0
+  },
+  "21D7E652C4602595": {
+    "amount": 1500,
+    "cooldownSeconds": 0
+  },
+  "1C7ABF52310F0292": {
+    "amount": 1500,
+    "cooldownSeconds": 0
+  },
+  "745B29B4405AA0FA": {
+    "amount": 1500,
+    "cooldownSeconds": 0
+  },
+  "7908CAE475D03416": {
+    "amount": 1500,
+    "cooldownSeconds": 0
+  },
+  "0FDBED2234B71036": {
+    "amount": 1500,
+    "cooldownSeconds": 0
+  },
+  "1B5A2ED61254B2DC": {
+    "amount": 1500,
+    "cooldownSeconds": 0
+  },
+  "7B53D182BCAEA642": {
+    "amount": 3000,
+    "cooldownSeconds": 0
+  },
+  "356035BA4BAD6A1B": {
+    "amount": 3000,
+    "cooldownSeconds": 0
+  },
+  "31530D99E8AC8C8B": {
+    "amount": 3000,
+    "cooldownSeconds": 0
+  },
+  "7D1E4CF532A0F98A": {
+    "amount": 5000,
+    "cooldownSeconds": 0
+  },
+  "7A9FEB54241D96F6": {
+    "amount": 5000,
+    "cooldownSeconds": 0
+  },
+  "4146855A35C7CEEB": {
+    "amount": 100,
+    "cooldownSeconds": 86400
+  },
+  "1EC22CB63416F494": {
+    "amount": 100,
+    "cooldownSeconds": 86400
+  },
+  "32EF0C7C06F10CB9": {
+    "amount": 100,
+    "cooldownSeconds": 86400
+  },
+  "14B8C30309D0C3A4": {
+    "amount": 1000,
+    "cooldownSeconds": 604800
+  },
+  "18BB249693CD6821": {
+    "amount": 1000,
+    "cooldownSeconds": 604800
+  },
+  "01355785DAADB33A": {
+    "amount": 1000,
+    "cooldownSeconds": 604800
+  },
+  "028ED279258534A1": {
+    "amount": 1000,
+    "cooldownSeconds": 0
+  },
+  "7F40148AA7E24126": {
+    "amount": 1000,
+    "cooldownSeconds": 0
+  },
+  "66F6604914A802E6": {
+    "amount": 3000,
+    "cooldownSeconds": 2592000
+  },
+  "2867B18EC52EF9FF": {
+    "amount": 3000,
+    "cooldownSeconds": 2592000
+  },
+  "4652C7005674A252": {
+    "amount": 3000,
+    "cooldownSeconds": 2592000
+  },
+  "5CCCA5CC2B0D3501": {
+    "amount": 400,
+    "cooldownSeconds": 0
+  },
+  "18D704BA37BC1FCB": {
+    "amount": 2000,
+    "cooldownSeconds": 0
+  },
+  "0C4159E93741E53E": {
+    "amount": 5000,
+    "cooldownSeconds": 0
+  },
+  "5048F7ED2CAE0675": {
+    "amount": 10000,
+    "cooldownSeconds": 0
+  },
+  "76AC2DC3DA55F07D": {
+    "amount": 2000,
+    "cooldownSeconds": 0
+  },
+  "68E57163E43E092E": {
+    "amount": 750,
+    "cooldownSeconds": 0
+  },
+  "5C80C2F387261802": {
+    "amount": 1000,
+    "cooldownSeconds": 0
+  },
+  "0ADE2A4570EAA539": {
+    "amount": 1000,
+    "cooldownSeconds": 0
+  },
+  "1A368A09AED26F1D": {
+    "amount": 100,
+    "cooldownSeconds": 0
+  }
+}

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
 import com.namanseul.farmingmod.network.ModNetwork;
 import com.namanseul.farmingmod.server.command.HubCommandRegistrar;
+import com.namanseul.farmingmod.server.command.QuestRewardCommand;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
@@ -21,6 +22,8 @@ public class NamanseulFarming {
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(ModNetwork::registerPayloads);
         NeoForge.EVENT_BUS.addListener(HubCommandRegistrar::onRegisterCommands);
+        NeoForge.EVENT_BUS.addListener(QuestRewardCommand::register);
+        NeoForge.EVENT_BUS.addListener(QuestRewardCommand::tick);
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 

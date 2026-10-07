@@ -1,0 +1,26 @@
+[
+  {
+    "projectID": 398521,
+    "fileID": 8765184,
+    "required": true,
+    "name": "FarmersDelight-1.21.1-1.3.4.jar",
+    "sha256": "139ad7696462c89c03eea463f805abffa552526c5dadaadae221dd9624cb197c",
+    "url": "https://mediafilez.forgecdn.net/files/8765/184/FarmersDelight-1.21.1-1.3.4.jar"
+  },
+  {
+    "projectID": 60028,
+    "fileID": 7761121,
+    "required": true,
+    "name": "Aquaculture-1.21.1-2.7.19.jar",
+    "sha256": "952e4b2a2deef875a144900f2b522865dab84ecd424e607a8b12c029c6cc9b83",
+    "url": "https://mediafilez.forgecdn.net/files/7761/121/Aquaculture-1.21.1-2.7.19.jar"
+  },
+  {
+    "projectID": 328085,
+    "fileID": 7963363,
+    "required": true,
+    "name": "create-1.21.1-6.0.10.jar",
+    "sha256": "ef87fe5709f1ba1f5b8bb20a2925b5afb4669e178fd6d8bf10c167759eefe37a",
+    "url": "https://mediafilez.forgecdn.net/files/7963/363/create-1.21.1-6.0.10.jar"
+  }
+]
