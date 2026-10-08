@@ -11,6 +11,8 @@ import com.namanseul.farmingmod.server.player.PlayerActivityTracker;
 import com.namanseul.farmingmod.server.mail.BackendMailBridge;
 import com.namanseul.farmingmod.server.mail.MailClaimProtocol;
 import com.namanseul.farmingmod.server.mail.MailUiService;
+import com.namanseul.farmingmod.server.delivery.BackendDeliveryBridge;
+import com.namanseul.farmingmod.server.delivery.DeliveryProtocol;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -60,6 +62,9 @@ public final class ShopTradeJournal {
                 || !root(player).getCompound("listingAudit").isEmpty()) {
             throw new IllegalArgumentException("A trade is still pending. Wait for recovery before changing listings.");
         }
+    }
+    public static boolean hasPending(ServerPlayer player) {
+        return DIRTY.contains(player.getUUID()) || root(player).contains("pending") || !root(player).getCompound("listingAudit").isEmpty();
     }
 
     public static void submit(ServerPlayer player, UiRequestPayload payload, String itemId, int quantity) {
@@ -122,6 +127,57 @@ public final class ShopTradeJournal {
         waiting.addProperty("pending", true);
         sendSuccess(player, clientId, type, waiting.toString());
         recover(player);
+    }
+
+    public static void submitDelivery(ServerPlayer player, UiRequestPayload payload, JsonObject contract) {
+        String clientId = UUID.fromString(payload.requestId()).toString();
+        String contractId = contract.get("id").getAsString();
+        if (!clientId.equals(payload.requestId())) throw new IllegalArgumentException("invalid delivery request UUID");
+        if (DIRTY.contains(player.getUUID())) persist(player);
+        flushListingAudit(player);
+        notifyDeferred(player);
+        CompoundTag journal = root(player).copy();
+        CompoundTag completed = journal.getCompound("completed");
+        if (completed.contains(clientId)) {
+            CompoundTag record = completed.getCompound(clientId);
+            match(record, "delivery", contractId, record.getInt("quantity"));
+            reply(player, clientId, "delivery", record.getBoolean("accepted"), record.getString("result"));
+            return;
+        }
+        if (journal.contains("pending")) {
+            CompoundTag pending = journal.getCompound("pending");
+            if (!clientId.equals(pending.getString("clientId")))
+                throw new IllegalArgumentException("이전 거래·납품을 처리 중입니다. 잠시 후 새로고침해주세요.");
+            match(pending, "delivery", contractId, pending.getInt("quantity"));
+        } else {
+            if (!"active".equals(contract.get("status").getAsString())) throw new IllegalArgumentException("이미 완료한 의뢰입니다.");
+            String itemId = contract.get("itemId").getAsString();
+            Item item = resolve(itemId);
+            int remaining = contract.get("quantity").getAsInt()-contract.get("delivered").getAsInt();
+            if (remaining < 1 || remaining > 1000) throw new IllegalArgumentException("잘못된 납품 수량입니다.");
+            List<ItemStack> planned = new ArrayList<>();
+            for (ItemStack stack : player.getInventory().items) planned.add(stack.copy());
+            ListTag held = new ListTag();
+            int quantity = 0;
+            for (ItemStack stack : planned) {
+                // Never consume renamed, enchanted or otherwise customized items as raw supplies.
+                if (!stack.isEmpty() && stack.getItem() == item && stack.getComponentsPatch().isEmpty() && quantity < remaining) {
+                    int count = Math.min(remaining-quantity,stack.getCount());
+                    held.add(stack.copyWithCount(count).save(player.registryAccess()));
+                    stack.shrink(count); quantity += count;
+                }
+            }
+            if (quantity == 0) throw new IllegalArgumentException("인벤토리에 납품할 일반 아이템이 없습니다.");
+            CompoundTag pending = new CompoundTag();
+            pending.putString("clientId",clientId); pending.putString("requestId",UUID.randomUUID().toString());
+            pending.putString("transactionType","delivery"); pending.putString("itemId",contractId);
+            pending.putString("deliveryItemId",itemId); pending.putInt("quantity",quantity);
+            pending.putString("phase","queued"); pending.put("held",held); journal.put("pending",pending);
+            applyInventory(player,planned); player.getPersistentData().put(KEY,journal);
+            persist(player);
+        }
+        JsonObject waiting = new JsonObject(); waiting.addProperty("pending",true);
+        sendSuccess(player,clientId,"delivery",waiting.toString()); recover(player);
     }
 
     public static void submitListing(ServerPlayer player, UiRequestPayload payload, String itemId, int quantity, int slot) {
@@ -301,6 +357,7 @@ public final class ShopTradeJournal {
         catch (Exception ex) { BUSY.remove(requestId); throw ex; }
         ShopTradeProtocol.Request request = new ShopTradeProtocol.Request(player.getUUID().toString(), requestId,
                 pending.getString("transactionType"), pending.getString("itemId"), pending.getInt("quantity"));
+        String deliveryItemId = pending.getString("deliveryItemId");
         var server = player.getServer();
         HTTP.execute(() -> {
             ShopTradeProtocol.Outcome outcome;
@@ -308,6 +365,9 @@ public final class ShopTradeJournal {
                 if (request.transactionType().equals("mail")) {
                     var mail = BackendMailBridge.claimReceipt(request.playerId(), request.itemId(), request.requestId());
                     outcome = new ShopTradeProtocol.Outcome(mail.accepted(), mail.result());
+                } else if (request.transactionType().equals("delivery")) {
+                    outcome = BackendDeliveryBridge.submit(new DeliveryProtocol.Request(request.playerId(),request.requestId(),request.itemId(),
+                            deliveryItemId,request.quantity()));
                 } else outcome = BackendShopBridge.trade(request);
             }
             catch (Exception ex) { BUSY.remove(requestId); return; }
@@ -343,9 +403,12 @@ public final class ShopTradeJournal {
         JsonObject result = JsonParser.parseString(pending.getString("result")).getAsJsonObject();
         ShopTradeProtocol.Request request = new ShopTradeProtocol.Request(player.getUUID().toString(),
                 pending.getString("requestId"), type, pending.getString("itemId"), pending.getInt("quantity"));
-        int status = accepted ? 200 : rejectionStatus(result.get("code").getAsString());
+        int status = accepted || type.equals("delivery") ? 200 : rejectionStatus(result.get("code").getAsString());
         boolean verified = type.equals("mail")
                 ? MailClaimProtocol.parse(request.playerId(), request.requestId(), request.itemId(), status, result.toString()).accepted()
+                : type.equals("delivery")
+                ? DeliveryProtocol.parse(new DeliveryProtocol.Request(request.playerId(),request.requestId(),request.itemId(),
+                    pending.getString("deliveryItemId"),request.quantity()),status,result.toString()).accepted()
                 : ShopTradeProtocol.parse(request, status, result.toString()).accepted();
         if (verified != accepted) {
             throw new IllegalStateException("invalid saved trade outcome");
@@ -359,7 +422,7 @@ public final class ShopTradeJournal {
             }
         } else if (accepted && type.equals("buy")) {
             returning.add(new ItemStack(resolve(pending.getString("itemId")), pending.getInt("quantity")));
-        } else if (!accepted && type.equals("sell")) {
+        } else if (!accepted && (type.equals("sell") || type.equals("delivery"))) {
             ListTag held = pending.getList("held", 10);
             for (int i = 0; i < held.size(); i++) {
                 ItemStack stack = ItemStack.parse(player.registryAccess(), held.getCompound(i))
@@ -388,7 +451,7 @@ public final class ShopTradeJournal {
         if (accepted) {
             try {
                 if (type.equals("mail")) PlayerActivityTracker.recordMailClaim(player.getUUID(), result);
-                else PlayerActivityTracker.recordShopTrade(player.getUUID(), action(type), result);
+                else if (!type.equals("delivery")) PlayerActivityTracker.recordShopTrade(player.getUUID(), action(type), result);
             }
             catch (Exception ignored) { /* ancillary tracking does not undo delivery */ }
         }
@@ -463,10 +526,13 @@ public final class ShopTradeJournal {
             case "sell" -> UiAction.SHOP_SELL;
             case "register" -> UiAction.SHOP_REGISTER;
             case "cancel" -> UiAction.SHOP_CANCEL_SELL;
+            case "delivery" -> UiAction.DELIVERY_SUBMIT;
             default -> throw new IllegalStateException("unknown operation");
         };
     }
-    private static UiScreenType screen(String type) { return type.equals("mail") ? UiScreenType.MAIL : UiScreenType.SHOP; }
+    private static UiScreenType screen(String type) {
+        return type.equals("mail") ? UiScreenType.MAIL : type.equals("delivery") ? UiScreenType.DELIVERY : UiScreenType.SHOP;
+    }
     private static void sendSuccess(ServerPlayer player, String clientId, String type, String json) {
         PacketDistributor.sendToPlayer(player, UiResponsePayload.successJson(clientId, screen(type), action(type), json));
     }

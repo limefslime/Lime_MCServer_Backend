@@ -17,8 +17,8 @@ def build(source, output):
     if not any(f['projectID'] == 1321557 for f in manifest['files']):
         raise ValueError('Expected EconomyCraft in original S2 source')
     additions = json.loads((ROOT / 'modpack/s2/additions.lock.json').read_text())
-    if {m['projectID'] for m in additions} != {398521, 60028, 328085}:
-        raise ValueError('All three approved mods must be pinned')
+    if {m['projectID'] for m in additions} != {398521, 60028}:
+        raise ValueError('Farmer\'s Delight and Aquaculture must be pinned')
     with tempfile.TemporaryDirectory() as temporary:
         stage = Path(temporary)
         shutil.copytree(source / 'overrides', stage / 'overrides')

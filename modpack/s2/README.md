@@ -1,6 +1,6 @@
 # Lime Colony S2 경제 연결 — 0.1.0
 
-첫 단계: EconomyCraft 제거, Farmer's Delight/Aquaculture/Create 추가,
+첫 단계: EconomyCraft 제거, Farmer's Delight/Aquaculture 추가,
 FTB 퀘스트 보상을 우리 PostgreSQL 지갑에 연결한다. Trade Post 코인은 독립 유지한다.
 
 ## 구성
@@ -9,12 +9,9 @@ FTB 퀘스트 보상을 우리 PostgreSQL 지갑에 연결한다. Trade Post 코
 |---|---|
 | Farmer's Delight | 1.3.4 / CurseForge 8765184 |
 | Aquaculture | 2.7.19 / CurseForge 7761121 |
-| Create | 6.0.10 / CurseForge 7963363 |
-
-세 파일의 실제 JAR 메타데이터와 SHA256은 additions.lock.json을 통해 확인했다.
-Create JAR 안에 Registrate, Flywheel, Ponder가 포함된다. 기존 S2의 Sodium
-0.8.12, Lithium 0.15.4는 Create의 선언된 최소 버전보다 높다. 전체 팩 호환성은
-실행 시험이 필요하다. Colony Logistics는 이번 승인 대상 세 모드에 포함되지 않아 추가하지 않았다.
+두 파일의 실제 JAR 메타데이터와 SHA256은 additions.lock.json을 통해 확인했다.
+자동화는 Create 기계 대신 MineColonies 주민의 고용·생산 기능을 사용한다.
+Create 및 Create 의존 모드는 포함하지 않는다.
 
 ## 빌드와 설치
 
@@ -23,7 +20,7 @@ Create JAR 안에 Registrate, Flywheel, Ponder가 포함된다. 기존 S2의 Sod
 3. 새 ZIP을 CurseForge에 가져온다. EconomyCraft와 기존 운영 데이터는 포함되지 않는다.
 4. Java 21에서 우리 모드 프로젝트의 `gradlew build` 실행 후 JAR을 클라이언트와 서버에 설치한다.
    생성 팩은 우리 모드 JAR을 자동 다운로드하지 않는다. JAR 설치 전 퀘스트 보상을 수령하지 않는다.
-5. 기존 DB 마이그레이션 001~016이 적용된 DB에 `019_add_integration_rewards.sql` → `020_add_shop_trade_receipts.sql` → `021_add_mail_claim_receipts.sql` 순서로 적용한 뒤 백엔드를 업데이트한다. 기존 DB는 SQL 파일을 수동 적용해야 한다.
+5. 기존 DB 마이그레이션 001~016이 적용된 DB에 `019_add_integration_rewards.sql` → `020_add_shop_trade_receipts.sql` → `021_add_mail_claim_receipts.sql` → `022_add_delivery_contracts.sql` 순서로 적용한 뒤 백엔드를 업데이트한다. 기존 DB는 SQL 파일을 수동 적용해야 한다.
    017/018은 별도 작업 브랜치의 번호이므로 이 변경에서 덮어쓰지 않는다.
 6. 백엔드: `INTEGRATION_API_TOKEN`에 32자 이상의 서버 전용 비밀값을 지정한다.
    Minecraft 서버: 같은 값을 `NFS_INTEGRATION_API_TOKEN`에 지정한다.
@@ -63,6 +60,9 @@ DB 테스트는 PGlite PostgreSQL 엔진에서 수행하며 실제 pg 서버의 
 
 게임 상점 거래는 백엔드와 이번 Java 모드를 함께 업데이트해야 한다. 플레이어 저장 확인·파일/디렉터리 fsync가 성공한 경우에만 결제 요청을 전송한다. 복구 검증 절차: `docs/S2_game_trade_recovery.md`.
 
-우편 수령도 영속 대기열을 사용한다. 이번 UI 프로토콜은 10이며 클라이언트와 서버 모드를 함께 업데이트한다. 검증 절차: `docs/S2_mail_recovery.md`.
+우편 수령도 영속 대기열을 사용한다. 이번 UI 프로토콜은 11이며 클라이언트와 서버 모드를 함께 업데이트한다. 검증 절차: `docs/S2_mail_recovery.md`.
 
 판매 등록·취소는 요청 UUID로 중복 처리를 막고, 감사 파일을 월드 `nfs-listing-audit/`에 보관한다. 검증 절차: `docs/S2_listing_escrow.md`.
+
+납품 의뢰 메뉴(수락 목록·부분 납품·완료 기록)와 설정/검증 절차: `docs/S2_delivery_contracts.md`.
+Farmer's Delight × MineColonies 호환 패치는 원본 MineColonies 버전과 맞지 않아 제외했다.

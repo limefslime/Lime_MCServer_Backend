@@ -6,6 +6,7 @@ public enum UiScreenType {
     MAIL,
     INVEST,
     STATUS,
+    DELIVERY,
     PLAYER;
 
     public String serialized() {

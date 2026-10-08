@@ -61,6 +61,7 @@ public final class UiServerPayloadHandlers {
                 case INVEST -> handleInvestRequest(payload, player);
                 case STATUS -> handleStatusRequest(payload, player);
                 case PLAYER -> handlePlayerRequest(payload, player);
+                case DELIVERY -> com.namanseul.farmingmod.server.delivery.DeliveryUiService.handle(player,payload);
             }
         } catch (IllegalArgumentException ex) {
             NamanseulFarming.LOGGER.warn("[UI] Request validation failed id={} screen={} action={} error={}",

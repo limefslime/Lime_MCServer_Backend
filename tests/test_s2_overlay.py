@@ -42,7 +42,8 @@ class OverlayTests(unittest.TestCase):
                 manifest = json.loads(archive.read('manifest.json'))
                 ids = {f['projectID'] for f in manifest['files']}
                 self.assertNotIn(1321557, ids)
-                self.assertTrue({398521, 60028, 328085}.issubset(ids))
+                self.assertTrue({398521, 60028}.issubset(ids))
+                self.assertNotIn(328085, ids)
                 self.assertFalse(any('config/economycraft/' in name for name in archive.namelist()))
                 custom = archive.read('overrides/kubejs/server_scripts/CustomRewards.js').decode()
                 self.assertIn('nfsreward', custom)

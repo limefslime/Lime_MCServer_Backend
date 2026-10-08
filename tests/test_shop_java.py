@@ -21,11 +21,12 @@ class ShopJavaTests(unittest.TestCase):
             sources = [JAVA_ROOT / 'ShopTradeProtocol.java', JAVA_ROOT / 'TradeInventoryPlan.java',
                        JAVA_ROOT / 'ListingRequestReceipts.java', JAVA_ROOT / 'ListingAuditWriter.java',
                        ROOT / 'tests/java/ListingRequestReceiptsTest.java', ROOT / 'tests/java/ListingAuditWriterTest.java',
+                       JAVA_ROOT.parent / 'delivery/DeliveryProtocol.java', ROOT / 'tests/java/DeliveryProtocolTest.java',
                        JAVA_ROOT.parent / 'mail/MailClaimProtocol.java', ROOT / 'tests/java/MailClaimProtocolTest.java',
                        ROOT / 'tests/java/ShopTradeProtocolTest.java', ROOT / 'tests/java/TradeInventoryPlanTest.java',
                        ROOT / 'tests/java/stubs/net/minecraft/world/item/ItemStack.java']
             subprocess.run([javac, '--release', '21', '-cp', gson, '-d', output, *map(str,sources)], check=True, capture_output=True, text=True)
-            for main in ['ShopTradeProtocolTest', 'TradeInventoryPlanTest', 'MailClaimProtocolTest', 'ListingRequestReceiptsTest', 'ListingAuditWriterTest']:
+            for main in ['DeliveryProtocolTest', 'ShopTradeProtocolTest', 'TradeInventoryPlanTest', 'MailClaimProtocolTest', 'ListingRequestReceiptsTest', 'ListingAuditWriterTest']:
                 result = subprocess.run([java, '-cp', output + os.pathsep + gson, main], check=True, capture_output=True, text=True)
                 self.assertIn('passed', result.stdout)
 

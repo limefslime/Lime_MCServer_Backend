@@ -134,6 +134,12 @@ public final class UiClientNetworking {
         return payload;
     }
 
+    public static String requestDelivery(UiAction action, String id) {
+        JsonObject payload = new JsonObject();
+        if (id != null) payload.addProperty(action == UiAction.DELIVERY_ACCEPT ? "templateId" : "contractId",id);
+        return send(UiScreenType.DELIVERY,action,payload);
+    }
+
     private static String send(UiScreenType screenType, UiAction action) {
         return send(screenType, action, null);
     }

@@ -30,7 +30,10 @@ public enum UiAction {
     MAIL_LIST,
     MAIL_DETAIL,
     MAIL_CLAIM,
-    MAIL_REFRESH;
+    MAIL_REFRESH,
+    DELIVERY_LIST,
+    DELIVERY_ACCEPT,
+    DELIVERY_SUBMIT;
 
     public String serialized() {
         return name().toLowerCase();

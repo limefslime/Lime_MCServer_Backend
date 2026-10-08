@@ -1,0 +1,5 @@
+[
+  {"id":"wheat","title":"식당의 밀 주문","itemId":"minecraft:wheat","quantity":64,"reward":70,"cooldownSeconds":86400},
+  {"id":"cod","title":"생선 요리 재료 주문","itemId":"minecraft:cod","quantity":32,"reward":100,"cooldownSeconds":86400},
+  {"id":"tomato","title":"신선한 토마토 주문","itemId":"farmersdelight:tomato","quantity":32,"reward":70,"cooldownSeconds":86400}
+]

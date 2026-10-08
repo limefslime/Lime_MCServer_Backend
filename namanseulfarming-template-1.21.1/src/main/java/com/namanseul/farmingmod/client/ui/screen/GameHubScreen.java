@@ -75,6 +75,10 @@ public final class GameHubScreen extends BaseGameScreen {
         menuViews.put(MENU_MAIL, new MailTabView());
         menuViews.put(MENU_INVEST, new InvestTabView());
         menuViews.put(MENU_REGION, new RegionTabView());
+        menuViews.put("delivery", new HubTabView() {
+            @Override public Component menuLabel() { return Component.literal("납품 의뢰"); }
+            @Override public void openFromHub(GameHubScreen hub) { Minecraft.getInstance().setScreen(new DeliveryScreen(hub)); }
+        });
     }
 
     public void handleServerResponse(UiResponsePayload payload) {

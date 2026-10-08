@@ -27,6 +27,7 @@ public class NamanseulFarming {
         NeoForge.EVENT_BUS.addListener(QuestRewardCommand::tick);
         NeoForge.EVENT_BUS.addListener(ShopTradeJournal::tick);
         NeoForge.EVENT_BUS.addListener(ShopTradeJournal::stopped);
+        NeoForge.EVENT_BUS.addListener(com.namanseul.farmingmod.server.delivery.DeliveryUiService::stopped);
         NeoForge.EVENT_BUS.addListener(ShopTradeJournal::clonePlayer);
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }

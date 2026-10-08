@@ -35,6 +35,10 @@ public final class ClientUiResponseDispatcher {
                 case MAIL -> handleMail(payload, minecraft);
                 case INVEST -> handleInvest(payload, minecraft);
                 case STATUS -> handleStatus(payload, minecraft);
+                case DELIVERY -> {
+                    if (minecraft.screen instanceof com.namanseul.farmingmod.client.ui.screen.DeliveryScreen screen)
+                        screen.handleServerResponse(payload);
+                }
             }
         });
     }
