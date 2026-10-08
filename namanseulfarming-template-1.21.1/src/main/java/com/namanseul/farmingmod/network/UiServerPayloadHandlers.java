@@ -205,27 +205,14 @@ public final class UiServerPayloadHandlers {
                 }
                 return; // Journal replies after verified completion; queued requests recover asynchronously.
             }
-            case SHOP_REGISTER -> {
-                ShopTradeJournal.requireSettled(player);
-                String itemId = readItemId(requestPayload);
-                int quantity = readQuantity(requestPayload);
-                int slot = readInt(requestPayload, "slot", -1);
-                JsonObject listing = PlayerShopListingService.registerListing(player, itemId, quantity, slot);
-                JsonObject response = new JsonObject();
-                response.addProperty("registered", true);
-                response.add("listing", listing);
-                result = response;
-            }
-            case SHOP_CANCEL_SELL -> {
-                ShopTradeJournal.requireSettled(player);
-                String itemId = readItemId(requestPayload);
-                JsonObject removed = PlayerShopListingService.cancelListing(player, itemId);
-                JsonObject response = new JsonObject();
-                response.addProperty("canceled", true);
-                response.add("listing", removed);
-                response.addProperty("returnedToInventory", true);
-                response.addProperty("itemName", readOptionalString(removed, "itemName", itemId));
-                result = response;
+            case SHOP_REGISTER, SHOP_CANCEL_SELL -> {
+                boolean register = payload.action() == UiAction.SHOP_REGISTER;
+                try {
+                    ShopTradeJournal.submitListing(player, payload, readItemId(requestPayload),
+                            register ? readQuantity(requestPayload) : 0,
+                            register ? readInt(requestPayload, "slot", -1) : -1);
+                } catch (IllegalStateException ex) { throw new IllegalArgumentException(ex.getMessage()); }
+                return;
             }
             default -> throw new IllegalArgumentException("unsupported shop action");
         }

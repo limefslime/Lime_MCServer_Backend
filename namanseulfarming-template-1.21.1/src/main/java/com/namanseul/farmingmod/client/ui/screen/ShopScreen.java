@@ -850,6 +850,21 @@ public final class ShopScreen extends BaseGameScreen {
             return;
         }
 
+        if (payload.success() && payload.dataJson() != null) {
+            try {
+                var data = com.google.gson.JsonParser.parseString(payload.dataJson()).getAsJsonObject();
+                if (data.has("pending") && data.get("pending").getAsBoolean()) {
+                    if (payload.action() == UiAction.SHOP_REGISTER) pendingRegisterRequestId = payload.requestId();
+                    else pendingCancelSellRequestId = payload.requestId();
+                    listingActionLoading = true;
+                    statusMessage = "Listing updated. Waiting for storage confirmation.";
+                    setError(null);
+                    updateActionButtons();
+                    return;
+                }
+            } catch (Exception ignored) { /* final response is handled below */ }
+        }
+
         listingActionLoading = false;
         if (!payload.success()) {
             showFailure(payload.error() == null || payload.error().isBlank()

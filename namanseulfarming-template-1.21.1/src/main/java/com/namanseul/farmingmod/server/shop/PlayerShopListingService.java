@@ -74,7 +74,7 @@ public final class PlayerShopListingService {
     }
 
     /** Inventory and escrow share the same player save. Call only on the server thread. */
-    public static JsonObject registerListing(ServerPlayer player, String itemId, int quantity, int preferredSlot) {
+    static JsonObject registerListing(ServerPlayer player, String itemId, int quantity, int preferredSlot) {
         ListingEntry existing = readListings(player.getUUID()).get(itemId);
         if (existing != null) Math.addExact(existing.quantity, quantity);
         if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
@@ -103,10 +103,12 @@ public final class PlayerShopListingService {
         entry.put("stacks", stacks);
         if (!entry.contains("createdAt")) entry.putLong("createdAt", System.currentTimeMillis());
         listings.put(itemId, entry);
+        int total = Math.addExact(existing == null ? 0 : existing.quantity, quantity);
+        String name = existing == null ? captured.getFirst().getHoverName().getString() : existing.itemName;
+        JsonObject result = new ListingEntry(itemId, name, "player_listing", total, entry.getLong("createdAt")).toShopItemJson();
         for (var take : taken.entrySet()) inventory.get(take.getKey()).shrink(take.getValue());
         player.getPersistentData().put(STORAGE_KEY, listings);
-        changed(player);
-        return getListing(player.getUUID(), itemId);
+        return result;
     }
 
     public static JsonObject getListing(UUID playerUuid, String itemId) {
@@ -114,7 +116,7 @@ public final class PlayerShopListingService {
         return entry == null ? null : entry.toShopItemJson();
     }
 
-    public static JsonObject cancelListing(ServerPlayer player, String itemId) {
+    static JsonObject cancelListing(ServerPlayer player, String itemId) {
         JsonObject listing = getListing(player.getUUID(), itemId);
         if (listing == null) throw new IllegalArgumentException("listing not found");
         CompoundTag listings = player.getPersistentData().getCompound(STORAGE_KEY).copy();
@@ -144,14 +146,7 @@ public final class PlayerShopListingService {
         for (int i = 0; i < planned.size(); i++) player.getInventory().items.set(i, planned.get(i));
         listings.remove(itemId);
         player.getPersistentData().put(STORAGE_KEY, listings);
-        changed(player);
         return listing;
-    }
-
-    private static void changed(ServerPlayer player) {
-        player.getInventory().setChanged();
-        player.containerMenu.broadcastChanges();
-        player.getServer().getPlayerList().save(player);
     }
 
     private static Map<String, ListingEntry> readListings(UUID playerUuid) {

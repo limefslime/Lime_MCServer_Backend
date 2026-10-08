@@ -13,6 +13,7 @@ import com.namanseul.farmingmod.server.mail.MailClaimProtocol;
 import com.namanseul.farmingmod.server.mail.MailUiService;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -55,7 +56,8 @@ public final class ShopTradeJournal {
     private ShopTradeJournal() {}
 
     public static void requireSettled(ServerPlayer player) {
-        if (DIRTY.contains(player.getUUID()) || root(player).contains("pending")) {
+        if (DIRTY.contains(player.getUUID()) || root(player).contains("pending")
+                || !root(player).getCompound("listingAudit").isEmpty()) {
             throw new IllegalArgumentException("A trade is still pending. Wait for recovery before changing listings.");
         }
     }
@@ -66,6 +68,7 @@ public final class ShopTradeJournal {
         if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
         String type = payload.action() == UiAction.SHOP_BUY ? "buy" : "sell";
         if (DIRTY.contains(player.getUUID())) persist(player);
+        flushListingAudit(player);
         notifyDeferred(player);
         CompoundTag journal = root(player).copy();
         CompoundTag completed = journal.getCompound("completed");
@@ -121,11 +124,108 @@ public final class ShopTradeJournal {
         recover(player);
     }
 
+    public static void submitListing(ServerPlayer player, UiRequestPayload payload, String itemId, int quantity, int slot) {
+        String type = payload.action() == UiAction.SHOP_REGISTER ? "register" : "cancel";
+        var request = new ListingRequestReceipts.Request(payload.requestId(), type, itemId, quantity, slot);
+        if (DIRTY.contains(player.getUUID())) persist(player);
+        flushListingAudit(player);
+        notifyDeferred(player);
+        CompoundTag journal = root(player).copy();
+        CompoundTag completed = journal.getCompound("completed").copy();
+        CompoundTag previous = completed.getCompound(request.requestId());
+        ListingRequestReceipts.Receipt receipt = null;
+        if (completed.contains(request.requestId())) {
+            // Shared UI IDs cannot collide with an earlier shop or mail operation.
+            match(previous, type, itemId, quantity);
+            var fingerprint = new ListingRequestReceipts.Request(previous.getString("clientId"),
+                    previous.getString("transactionType"), previous.getString("itemId"), previous.getInt("quantity"), previous.getInt("slot"));
+            receipt = new ListingRequestReceipts.Receipt(fingerprint,
+                    JsonParser.parseString(previous.getString("result")).getAsJsonObject());
+        } else requireSettled(player);
+        try {
+            JsonObject result = ListingRequestReceipts.perform(request, receipt, () -> {
+                JsonObject response = new JsonObject();
+                if (type.equals("register")) {
+                    response.addProperty("registered", true);
+                    response.add("listing", PlayerShopListingService.registerListing(player, itemId, quantity, slot));
+                } else {
+                    JsonObject listing = PlayerShopListingService.cancelListing(player, itemId);
+                    response.addProperty("canceled", true);
+                    response.addProperty("returnedToInventory", true);
+                    response.addProperty("itemName", listing.get("itemName").getAsString());
+                    response.add("listing", listing);
+                }
+                return response;
+            }, saved -> {
+                CompoundTag record = new CompoundTag();
+                record.putString("clientId", request.requestId());
+                record.putString("transactionType", type);
+                record.putString("itemId", itemId);
+                record.putInt("quantity", quantity);
+                record.putInt("slot", slot);
+                record.putLong("createdAt", System.currentTimeMillis());
+                record.putBoolean("accepted", true);
+                record.putString("result", saved.result().toString());
+                completed.put(request.requestId(), record);
+                journal.put("completed", completed);
+                CompoundTag audits = journal.getCompound("listingAudit").copy();
+                audits.put(request.requestId(), record.copy());
+                journal.put("listingAudit", audits);
+                player.getPersistentData().put(KEY, journal);
+                DEFERRED_REPLY.put(player.getUUID(), record);
+                player.getInventory().setChanged();
+                player.containerMenu.broadcastChanges();
+                persist(player);
+                flushListingAudit(player);
+            });
+            if (receipt != null) sendSuccess(player, request.requestId(), type, result.toString());
+            else notifyDeferred(player);
+        } catch (IllegalStateException ex) {
+            // A committed in-memory receipt blocks reapplication while storage/audit is recovered.
+            if (!root(player).getCompound("completed").contains(request.requestId())) throw ex;
+            JsonObject waiting = new JsonObject();
+            waiting.addProperty("pending", true);
+            sendSuccess(player, request.requestId(), type, waiting.toString());
+            warn();
+        }
+    }
+
+    private static void flushListingAudit(ServerPlayer player) {
+        CompoundTag audits = root(player).getCompound("listingAudit").copy();
+        if (audits.isEmpty()) return;
+        try {
+            Path directory = player.getServer().getWorldPath(LevelResource.ROOT).resolve("nfs-listing-audit");
+            for (String id : new ArrayList<>(audits.getAllKeys())) {
+                CompoundTag record = audits.getCompound(id);
+                Instant time = Instant.ofEpochMilli(record.getLong("createdAt"));
+                JsonObject event = new JsonObject();
+                event.addProperty("auditId", player.getUUID() + ":" + id);
+                event.addProperty("playerId", player.getUUID().toString());
+                event.addProperty("requestId", id);
+                event.addProperty("event", "listing_" + record.getString("transactionType"));
+                event.addProperty("recordedAt", time.toString());
+                event.addProperty("itemId", record.getString("itemId"));
+                event.addProperty("quantity", record.getInt("quantity"));
+                event.addProperty("slot", record.getInt("slot"));
+                event.add("result", JsonParser.parseString(record.getString("result")));
+                ListingAuditWriter.append(directory, event);
+                audits.remove(id);
+                CompoundTag journal = root(player).copy();
+                journal.put("listingAudit", audits.copy());
+                player.getPersistentData().put(KEY, journal);
+                persist(player);
+            }
+        } catch (Exception ex) {
+            throw new IllegalStateException("Listing audit retained; check world/nfs-listing-audit and player storage.", ex);
+        }
+    }
+
     public static void submitMail(ServerPlayer player, UiRequestPayload payload, String mailId) {
         String clientId = UUID.fromString(payload.requestId()).toString();
         if (!clientId.equals(payload.requestId())) throw new IllegalArgumentException("invalid mail request UUID");
         mailId = UUID.fromString(mailId).toString();
         if (DIRTY.contains(player.getUUID())) persist(player);
+        flushListingAudit(player);
         notifyDeferred(player);
         CompoundTag journal = root(player).copy();
         CompoundTag completed = journal.getCompound("completed");
@@ -181,6 +281,7 @@ public final class ShopTradeJournal {
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             try {
                 if (DIRTY.contains(player.getUUID())) persist(player);
+                flushListingAudit(player);
                 notifyDeferred(player);
                 recover(player);
             } catch (Exception ex) { warn(); }
@@ -295,8 +396,10 @@ public final class ShopTradeJournal {
     }
 
     private static void notifyDeferred(ServerPlayer player) {
-        CompoundTag record = DEFERRED_REPLY.remove(player.getUUID());
+        CompoundTag record = DEFERRED_REPLY.get(player.getUUID());
         if (record == null) return;
+        flushListingAudit(player);
+        DEFERRED_REPLY.remove(player.getUUID());
         String clientId = record.getString("clientId");
         // Reconnected players may have loaded an earlier atomic save and still be pending.
         if (!root(player).getCompound("completed").contains(clientId)) return;
@@ -337,10 +440,14 @@ public final class ShopTradeJournal {
             Path file = player.getServer().getWorldPath(LevelResource.PLAYER_DATA_DIR)
                     .resolve(player.getUUID() + ".dat");
             CompoundTag saved = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
-            if (!expected.getList("Inventory", 10).equals(saved.getList("Inventory", 10))
-                    || !expected.getCompound("NeoForgeData").getCompound(KEY)
-                    .equals(saved.getCompound("NeoForgeData").getCompound(KEY))) {
-                throw new IllegalStateException("player save does not contain trade inventory and journal");
+            if (!expected.getList("Inventory", 10).equals(saved.getList("Inventory", 10))) {
+                throw new IllegalStateException("player save does not contain inventory");
+            }
+            for (String key : new String[] {KEY, "nfsShopListings"}) {
+                if (!expected.getCompound("NeoForgeData").getCompound(key)
+                        .equals(saved.getCompound("NeoForgeData").getCompound(key))) {
+                    throw new IllegalStateException("player save does not contain journal and original escrow");
+                }
             }
             try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) { channel.force(true); }
             try (FileChannel directory = FileChannel.open(file.getParent(), StandardOpenOption.READ)) { directory.force(true); }
@@ -350,7 +457,14 @@ public final class ShopTradeJournal {
         }
     }
     private static UiAction action(String type) {
-        return type.equals("mail") ? UiAction.MAIL_CLAIM : type.equals("buy") ? UiAction.SHOP_BUY : UiAction.SHOP_SELL;
+        return switch (type) {
+            case "mail" -> UiAction.MAIL_CLAIM;
+            case "buy" -> UiAction.SHOP_BUY;
+            case "sell" -> UiAction.SHOP_SELL;
+            case "register" -> UiAction.SHOP_REGISTER;
+            case "cancel" -> UiAction.SHOP_CANCEL_SELL;
+            default -> throw new IllegalStateException("unknown operation");
+        };
     }
     private static UiScreenType screen(String type) { return type.equals("mail") ? UiScreenType.MAIL : UiScreenType.SHOP; }
     private static void sendSuccess(ServerPlayer player, String clientId, String type, String json) {
@@ -363,7 +477,7 @@ public final class ShopTradeJournal {
     }
     private static void warn() {
         if (System.currentTimeMillis() - lastWarning > 60000) {
-            NamanseulFarming.LOGGER.warn("[Shop] trade recovery pending; check player storage and inventory space");
+            NamanseulFarming.LOGGER.warn("[Shop] recovery pending; check player storage, inventory space and nfs-listing-audit");
             lastWarning = System.currentTimeMillis();
         }
     }

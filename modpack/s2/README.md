@@ -63,4 +63,6 @@ DB 테스트는 PGlite PostgreSQL 엔진에서 수행하며 실제 pg 서버의 
 
 게임 상점 거래는 백엔드와 이번 Java 모드를 함께 업데이트해야 한다. 플레이어 저장 확인·파일/디렉터리 fsync가 성공한 경우에만 결제 요청을 전송한다. 복구 검증 절차: `docs/S2_game_trade_recovery.md`.
 
-우편 수령도 영속 대기열을 사용한다. 이번 UI 프로토콜은 9이며 클라이언트와 서버 모드를 함께 업데이트한다. 검증 절차: `docs/S2_mail_recovery.md`.
+우편 수령도 영속 대기열을 사용한다. 이번 UI 프로토콜은 10이며 클라이언트와 서버 모드를 함께 업데이트한다. 검증 절차: `docs/S2_mail_recovery.md`.
+
+판매 등록·취소는 요청 UUID로 중복 처리를 막고, 감사 파일을 월드 `nfs-listing-audit/`에 보관한다. 검증 절차: `docs/S2_listing_escrow.md`.
