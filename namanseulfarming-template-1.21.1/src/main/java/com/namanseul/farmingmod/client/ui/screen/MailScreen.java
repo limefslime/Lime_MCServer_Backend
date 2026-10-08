@@ -317,6 +317,18 @@ public final class MailScreen extends BaseGameScreen {
         if (pendingClaimRequestId != null && !pendingClaimRequestId.equals(payload.requestId())) {
             return;
         }
+        if (payload.success() && payload.dataJson() != null) {
+            try {
+                var data = com.google.gson.JsonParser.parseString(payload.dataJson()).getAsJsonObject();
+                if (data.has("pending") && data.get("pending").getAsBoolean()) {
+                    claimLoading = true;
+                    statusMessage = "Mail claim queued. Waiting for confirmation or inventory space.";
+                    setError(null);
+                    updateActionButtons();
+                    return;
+                }
+            } catch (Exception ignored) { /* final response is parsed below */ }
+        }
         pendingClaimRequestId = null;
         claimLoading = false;
 
@@ -425,7 +437,7 @@ public final class MailScreen extends BaseGameScreen {
             refreshButton.active = !busy;
         }
         if (closeButton != null) {
-            closeButton.active = !claimLoading;
+            closeButton.active = true; // A queued item delivery may require freeing inventory space.
         }
     }
 

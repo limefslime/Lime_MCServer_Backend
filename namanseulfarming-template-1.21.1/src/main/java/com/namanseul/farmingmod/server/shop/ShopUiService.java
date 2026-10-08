@@ -50,21 +50,7 @@ public final class ShopUiService {
         return BackendShopBridge.previewSellItem(playerUuid.toString(), itemId, quantity);
     }
 
-    public static JsonElement buy(UUID playerUuid, String itemId, int quantity)
-            throws BackendShopBridge.ShopBridgeException {
-        JsonElement result = BackendShopBridge.buyItem(playerUuid.toString(), itemId, quantity);
-        invalidateReadCaches();
-        return result;
-    }
-
-    public static JsonElement sell(UUID playerUuid, String itemId, int quantity)
-            throws BackendShopBridge.ShopBridgeException {
-        JsonElement result = BackendShopBridge.sellItem(playerUuid.toString(), itemId, quantity);
-        invalidateReadCaches();
-        return result;
-    }
-
-    private static void invalidateReadCaches() {
+    static void invalidateReadCaches() {
         READ_CACHE.invalidateAll();
     }
 }

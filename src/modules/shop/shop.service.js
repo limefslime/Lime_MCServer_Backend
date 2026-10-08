@@ -31,6 +31,7 @@ class ShopServiceError extends Error {
 
 export const shopErrorCode = {
   INVALID_INPUT: "INVALID_INPUT",
+  REQUEST_CONFLICT: "REQUEST_CONFLICT",
   ITEM_NOT_FOUND: "ITEM_NOT_FOUND",
   ITEM_INACTIVE: "ITEM_INACTIVE",
   INSUFFICIENT_BALANCE: "INSUFFICIENT_BALANCE",
@@ -1045,12 +1046,51 @@ export async function previewSellItem({ playerId, itemId, quantity }) {
   });
 }
 
-export async function buyItem({ playerId, itemId, quantity }) {
+// A wallet row lock serializes this player's trades across API workers.
+// Receipts are checked before current pricing/stock/cooldown: retries return the original outcome.
+async function beginTrade(client, { playerId, requestId, itemId, quantity, transactionType }) {
+  await ensurePlayerExists(playerId, client);
+  await ensureWalletExists(playerId, client);
+  await client.query("SELECT player_id FROM wallets WHERE player_id=$1 FOR UPDATE", [playerId]);
+  if (requestId === undefined) return null;
+  const { rows: [receipt] } = await client.query(
+    "SELECT transaction_type, item_id, quantity, result FROM shop_trade_receipts WHERE player_id=$1 AND request_id=$2",
+    [playerId, requestId]);
+  if (!receipt) return null;
+  if (receipt.transaction_type !== transactionType || receipt.item_id !== itemId || receipt.quantity !== quantity) {
+    throw new ShopServiceError(shopErrorCode.REQUEST_CONFLICT, "requestId reused for another trade");
+  }
+  return { ...receipt.result, replayed: true };
+}
+
+async function finishTrade(client, claim, result) {
+  const { playerId, requestId, transactionType, itemId, quantity } = claim;
+  if (requestId !== undefined) {
+    result = { ...result, requestId, transactionType, replayed: false };
+    await client.query(
+      `INSERT INTO shop_trade_receipts(player_id,request_id,transaction_type,item_id,quantity,result)
+       VALUES($1,$2,$3,$4,$5,$6)`,
+      [playerId, requestId, transactionType, itemId, quantity, result]);
+  }
+  // The existing outbox writer persists each committed trade to local audit JSONL.
+  await client.query("INSERT INTO integration_audit_outbox(payload) VALUES($1)",
+    [{ event: "shop_trade", transactionType, ...result }]);
+  return result;
+}
+
+export async function buyItem({ playerId, itemId, quantity, requestId }, transaction = withTransaction) {
   validateUuid(playerId, "playerId");
+  if (requestId !== undefined) {
+    validateUuid(requestId, "requestId");
+    requestId = requestId.toLowerCase();
+  }
   validateItemId(itemId);
   validateQuantity(quantity);
 
-  return withTransaction(async (client) => {
+  return transaction(async (client) => {
+    const claim = { playerId, requestId, itemId, quantity, transactionType: "buy" };
+    const replay = await beginTrade(client, claim);
+    if (replay) return replay;
     const { item, pricingContext } = await loadTradeContext(client, itemId);
     const { unitPrice, grossTotalPrice, feeRate, feeAmount, totalPrice } = calculateBuyPrice(
       item,
@@ -1069,8 +1109,6 @@ export async function buyItem({ playerId, itemId, quantity }) {
       transactionType: "buy",
     });
 
-    await ensurePlayerExists(playerId, client);
-    await ensureWalletExists(playerId, client);
     await assertNoRapidFlipTrade(playerId, item.item_id, "buy", client);
 
     const stockedItem = await decreaseShopItemStockIfEnough(item.item_id, quantity, client);
@@ -1100,7 +1138,7 @@ export async function buyItem({ playerId, itemId, quantity }) {
     });
     await insertShopTransaction(shopTransactionPayload, client);
 
-    return buildShopTradeResult({
+    const result = buildShopTradeResult({
       playerId,
       item: stockedItem,
       quantity,
@@ -1112,16 +1150,24 @@ export async function buyItem({ playerId, itemId, quantity }) {
       balanceAfter: updatedWallet.balance,
       pricing,
     });
+    return finishTrade(client, claim, result);
   });
 }
 
-export async function sellItem({ playerId, itemId, quantity }) {
+export async function sellItem({ playerId, itemId, quantity, requestId }, transaction = withTransaction) {
   validateUuid(playerId, "playerId");
+  if (requestId !== undefined) {
+    validateUuid(requestId, "requestId");
+    requestId = requestId.toLowerCase();
+  }
   validateItemId(itemId);
   validateQuantity(quantity);
   validateSellQuantityLimit(quantity);
 
-  return withTransaction(async (client) => {
+  return transaction(async (client) => {
+    const claim = { playerId, requestId, itemId, quantity, transactionType: "sell" };
+    const replay = await beginTrade(client, claim);
+    if (replay) return replay;
     const { item, pricingContext } = await loadTradeContext(client, itemId);
     const { unitPrice, grossTotalPrice, feeRate, feeAmount, totalPrice } = calculateSellPrice(
       item,
@@ -1140,8 +1186,6 @@ export async function sellItem({ playerId, itemId, quantity }) {
       transactionType: "sell",
     });
 
-    await ensurePlayerExists(playerId, client);
-    await ensureWalletExists(playerId, client);
     await assertNoRapidFlipTrade(playerId, item.item_id, "sell", client);
 
     const updatedWallet = await addBalance(playerId, totalPrice, client);
@@ -1167,7 +1211,7 @@ export async function sellItem({ playerId, itemId, quantity }) {
     });
     await insertShopTransaction(shopTransactionPayload, client);
 
-    return buildShopTradeResult({
+    const result = buildShopTradeResult({
       playerId,
       item: stockedItem,
       quantity,
@@ -1179,5 +1223,6 @@ export async function sellItem({ playerId, itemId, quantity }) {
       balanceAfter: updatedWallet.balance,
       pricing,
     });
+    return finishTrade(client, claim, result);
   });
 }

@@ -1,5 +1,7 @@
 import "dotenv/config";
 import express from "express";
+import integrationRoutes from "./modules/integration/integration.routes.js";
+import { startIntegrationAudit } from "./services/integrationAudit.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
 import eventRoutes from "./modules/event/event.routes.js";
 import focusRoutes from "./modules/focus/focus.routes.js";
@@ -19,6 +21,7 @@ const app = express();
 
 // JSON 본문 파싱 (POST /wallet/add, /wallet/subtract)
 app.use(express.json());
+app.use("/integration", integrationRoutes);
 
 // 간단한 상태 확인용 엔드포인트
 app.get("/health", (_req, res) => {
@@ -58,8 +61,10 @@ if (shopReplenisher.started) {
 const server = app.listen(port, () => {
   console.log(`[app] wallet api server listening on port ${port}`);
 });
+const stopIntegrationAudit = startIntegrationAudit();
 
 function shutdown(signal) {
+  stopIntegrationAudit();
   console.log(`[app] received ${signal}, shutting down...`);
   stopShopStockReplenisher();
   server.close(() => {

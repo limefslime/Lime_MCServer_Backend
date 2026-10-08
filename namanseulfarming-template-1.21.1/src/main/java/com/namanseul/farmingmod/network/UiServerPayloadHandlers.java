@@ -21,6 +21,7 @@ import com.namanseul.farmingmod.server.status.StatusUiService;
 import com.namanseul.farmingmod.server.shop.BackendShopBridge;
 import com.namanseul.farmingmod.server.shop.PlayerShopListingService;
 import com.namanseul.farmingmod.server.shop.ShopUiService;
+import com.namanseul.farmingmod.server.shop.ShopTradeJournal;
 import com.namanseul.farmingmod.server.summary.HubSummaryService;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -196,68 +197,24 @@ public final class UiServerPayloadHandlers {
                 int quantity = readQuantity(requestPayload);
                 result = ShopUiService.previewSell(player.getUUID(), itemId, quantity);
             }
-            case SHOP_BUY -> {
-                String itemId = readItemId(requestPayload);
-                int quantity = readQuantity(requestPayload);
-                resolveItem(itemId);
-                result = ShopUiService.buy(player.getUUID(), itemId, quantity);
-                grantPlayerInventoryItem(player, itemId, quantity);
-                PlayerShopListingService.adjustListingQuantity(player.getUUID(), itemId, -quantity);
-            }
-            case SHOP_SELL -> {
-                String itemId = readItemId(requestPayload);
-                int quantity = readQuantity(requestPayload);
-                ensurePlayerHasInventoryItem(player, itemId, quantity);
-                result = ShopUiService.sell(player.getUUID(), itemId, quantity);
-                consumePlayerInventoryItem(player, itemId, quantity, -1);
-                PlayerShopListingService.adjustListingQuantity(player.getUUID(), itemId, quantity);
-            }
-            case SHOP_REGISTER -> {
-                String itemId = readItemId(requestPayload);
-                int quantity = readQuantity(requestPayload);
-                String itemName = readOptionalString(requestPayload, "itemName", itemId);
-                int slot = readInt(requestPayload, "slot", -1);
-                consumePlayerInventoryItem(player, itemId, quantity, slot);
-                JsonObject listing = PlayerShopListingService.registerListing(player.getUUID(), itemId, itemName, quantity);
-                JsonObject response = new JsonObject();
-                response.addProperty("registered", true);
-                response.add("listing", listing);
-                result = response;
-            }
-            case SHOP_CANCEL_SELL -> {
-                String itemId = readItemId(requestPayload);
-                JsonObject listing = PlayerShopListingService.getListing(player.getUUID(), itemId);
-                if (listing == null) {
-                    throw new IllegalArgumentException("listing not found");
+            case SHOP_BUY, SHOP_SELL -> {
+                try {
+                    ShopTradeJournal.submit(player, payload, readItemId(requestPayload), readQuantity(requestPayload));
+                } catch (IllegalStateException ex) {
+                    throw new IllegalArgumentException(ex.getMessage());
                 }
-                int quantity = Math.max(1, readInt(listing, "listingQuantity", 1));
-                String itemName = readOptionalString(listing, "itemName", itemId);
-                JsonElement mailResult = BackendMailBridge.sendItemRewardMail(
-                        player.getUUID().toString(),
-                        "Shop Sell Canceled",
-                        "Canceled sell listing has been returned by mail.",
-                        itemId,
-                        quantity
-                );
-                JsonObject removed = PlayerShopListingService.removeListing(player.getUUID(), itemId);
-                JsonObject response = new JsonObject();
-                response.addProperty("canceled", removed != null);
-                if (removed != null) {
-                    response.add("listing", removed);
-                }
-                response.add("mail", mailResult);
-                response.addProperty("itemName", itemName);
-                result = response;
+                return; // Journal replies after verified completion; queued requests recover asynchronously.
+            }
+            case SHOP_REGISTER, SHOP_CANCEL_SELL -> {
+                boolean register = payload.action() == UiAction.SHOP_REGISTER;
+                try {
+                    ShopTradeJournal.submitListing(player, payload, readItemId(requestPayload),
+                            register ? readQuantity(requestPayload) : 0,
+                            register ? readInt(requestPayload, "slot", -1) : -1);
+                } catch (IllegalStateException ex) { throw new IllegalArgumentException(ex.getMessage()); }
+                return;
             }
             default -> throw new IllegalArgumentException("unsupported shop action");
-        }
-
-        if (payload.action() == UiAction.SHOP_BUY || payload.action() == UiAction.SHOP_SELL) {
-            try {
-                PlayerActivityTracker.recordShopTrade(player.getUUID(), payload.action(), result);
-            } catch (Exception ignored) {
-                // activity tracking must never break core flow
-            }
         }
 
         PacketDistributor.sendToPlayer(
@@ -303,18 +260,11 @@ public final class UiServerPayloadHandlers {
             }
             case MAIL_CLAIM -> {
                 String mailId = readMailId(requestPayload);
-                result = MailUiService.claim(player.getUUID(), mailId);
-                applyMailClaimItemReward(player, result);
+                try { ShopTradeJournal.submitMail(player, payload, mailId); }
+                catch (IllegalStateException ex) { throw new IllegalArgumentException(ex.getMessage()); }
+                return;
             }
             default -> throw new IllegalArgumentException("unsupported mail action");
-        }
-
-        if (payload.action() == UiAction.MAIL_CLAIM) {
-            try {
-                PlayerActivityTracker.recordMailClaim(player.getUUID(), result);
-            } catch (Exception ignored) {
-                // activity tracking must never break core flow
-            }
         }
 
         PacketDistributor.sendToPlayer(
@@ -737,26 +687,6 @@ public final class UiServerPayloadHandlers {
             throw new IllegalArgumentException("itemId is unknown");
         }
         return item;
-    }
-
-    private static void applyMailClaimItemReward(ServerPlayer player, JsonElement claimPayload) {
-        JsonObject itemReward = findItemRewardObject(claimPayload);
-        if (itemReward == null) {
-            return;
-        }
-
-        String itemId = readOptionalString(itemReward, "itemId", "");
-        int quantity = readInt(itemReward, "quantity", 0);
-        if (itemId.isBlank() || quantity <= 0) {
-            return;
-        }
-
-        try {
-            grantPlayerInventoryItem(player, itemId, quantity);
-        } catch (Exception ex) {
-            NamanseulFarming.LOGGER.warn("[UI] mail item reward grant skipped player={} itemId={} quantity={} error={}",
-                    player.getGameProfile().getName(), itemId, quantity, ex.toString());
-        }
     }
 
     @Nullable
