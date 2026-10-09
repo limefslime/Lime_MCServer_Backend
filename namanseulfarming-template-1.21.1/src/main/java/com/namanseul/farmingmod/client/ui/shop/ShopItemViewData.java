@@ -18,6 +18,7 @@ public record ShopItemViewData(
         boolean active,
         boolean playerListed,
         int listingQuantity,
+        int listingUnitPrice,
         int stockQuantity
 ) {
     public String listLabel() {

@@ -43,25 +43,25 @@ public final class ShopPreviewPanelView {
     ) {
         List<Component> lines = new ArrayList<>();
         if (buyPreview == null && sellPreview == null && trade == null) {
-            lines.add(Component.literal("Select item and quantity."));
+            lines.add(Component.literal("상품과 수량을 선택하세요."));
             return lines;
         }
 
         if (buyPreview != null) {
-            lines.add(Component.literal("Buy x" + buyPreview.quantity() + ": " + buyPreview.netTotalPrice()));
+            lines.add(Component.literal("구매 수량 " + buyPreview.quantity() + ": " + buyPreview.netTotalPrice()));
             if (buyPreview.feeAmount() > 0) {
-                lines.add(Component.literal("Buy Fee: " + buyPreview.feeAmount()));
+                lines.add(Component.literal("구매 수수료: " + buyPreview.feeAmount()));
             }
         }
         if (sellPreview != null) {
-            lines.add(Component.literal("Sell x" + sellPreview.quantity() + ": " + sellPreview.netTotalPrice()));
+            lines.add(Component.literal("판매 수량 " + sellPreview.quantity() + ": " + sellPreview.netTotalPrice()));
             if (sellPreview.feeAmount() > 0) {
-                lines.add(Component.literal("Sell Fee: " + sellPreview.feeAmount()));
+                lines.add(Component.literal("판매 수수료: " + sellPreview.feeAmount()));
             }
         }
         if (trade != null) {
-            String action = "buy".equalsIgnoreCase(trade.transactionType()) ? "Bought" : "Sold";
-            lines.add(Component.literal("Last trade: " + action + " x" + trade.quantity()));
+            String action = "buy".equalsIgnoreCase(trade.transactionType()) ? "구매 완료" : "판매 완료";
+            lines.add(Component.literal("최근 거래: " + action + " x" + trade.quantity()));
         }
 
         return lines;

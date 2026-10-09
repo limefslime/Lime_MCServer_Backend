@@ -28,3 +28,8 @@ Thumbs.db
 /logs/
 
 __pycache__/
+
+# isolated build tooling and packaged deliverables
+.build-workaround/
+release/*.jar
+release/*.zip

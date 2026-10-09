@@ -1,4 +1,5 @@
-﻿import { withTransaction } from "../../db/pool.js";
+﻿import { economyRules,assertEconomyAvailable } from "../economy/economy.settings.js";
+import { withTransaction } from "../../db/pool.js";
 import { getActiveEvents as getActiveEventRows } from "../event/event.repository.js";
 import { findCurrentFocusState } from "../focus/focus.repository.js";
 import { getActiveProjectEffects } from "../project-completion/projectCompletion.repository.js";
@@ -81,10 +82,10 @@ function validateQuantity(quantity) {
 }
 
 function validateSellQuantityLimit(quantity) {
-  if (quantity > MAX_SELL_LIMIT) {
+  if (quantity > economyRules().maxSellQuantity) {
     throw new ShopServiceError(
       shopErrorCode.SELL_QUANTITY_TOO_LARGE,
-      `sell quantity must be ${MAX_SELL_LIMIT} or less`
+      `sell quantity must be ${economyRules().maxSellQuantity} or less`
     );
   }
 }
@@ -187,9 +188,9 @@ function parseNonNegativeInt(rawValue, fallback) {
 
 function getShopFeeConfig() {
   return {
-    buyFeeRate: parseFeeRate(process.env.SHOP_BUY_FEE_RATE, DEFAULT_BUY_FEE_RATE),
-    sellFeeRate: parseFeeRate(process.env.SHOP_SELL_FEE_RATE, DEFAULT_SELL_FEE_RATE),
-    minFee: parseNonNegativeInt(process.env.SHOP_MIN_FEE, DEFAULT_MIN_FEE),
+    buyFeeRate: economyRules().buyFeeRate,
+    sellFeeRate: economyRules().sellFeeRate,
+    minFee: economyRules().minFee,
   };
 }
 
@@ -539,11 +540,11 @@ async function assertNoRapidFlipTrade(playerId, itemId, transactionType, executo
   }
 
   const elapsedMs = Date.now() - latestTradeAt;
-  if (elapsedMs >= RAPID_FLIP_COOLDOWN_MS) {
+  if (elapsedMs >= economyRules().flipCooldownSeconds * 1000) {
     return;
   }
 
-  const remainingSec = Math.max(1, Math.ceil((RAPID_FLIP_COOLDOWN_MS - elapsedMs) / 1000));
+  const remainingSec = Math.max(1, Math.ceil((economyRules().flipCooldownSeconds * 1000 - elapsedMs) / 1000));
   throw new ShopServiceError(
     shopErrorCode.TRADE_COOLDOWN_ACTIVE,
     `opposite trade cooldown active: wait ${remainingSec}s`
@@ -1052,11 +1053,11 @@ async function beginTrade(client, { playerId, requestId, itemId, quantity, trans
   await ensurePlayerExists(playerId, client);
   await ensureWalletExists(playerId, client);
   await client.query("SELECT player_id FROM wallets WHERE player_id=$1 FOR UPDATE", [playerId]);
-  if (requestId === undefined) return null;
+  if (requestId === undefined) {await assertEconomyAvailable(client,playerId);return null;}
   const { rows: [receipt] } = await client.query(
     "SELECT transaction_type, item_id, quantity, result FROM shop_trade_receipts WHERE player_id=$1 AND request_id=$2",
     [playerId, requestId]);
-  if (!receipt) return null;
+  if (!receipt) {await assertEconomyAvailable(client,playerId);return null;}
   if (receipt.transaction_type !== transactionType || receipt.item_id !== itemId || receipt.quantity !== quantity) {
     throw new ShopServiceError(shopErrorCode.REQUEST_CONFLICT, "requestId reused for another trade");
   }

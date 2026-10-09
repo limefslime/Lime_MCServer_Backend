@@ -105,6 +105,10 @@ public final class ShopItemListPanel {
         graphics.disableScissor();
 
         renderScrollbar(graphics);
+        if(mouseX>=x&&mouseX<contentRight&&mouseY>=viewTop&&mouseY<viewBottom){
+            int index=(mouseY-baseY)/rowHeight;
+            if(index>=0&&index<entries.size()){ShopItemViewData row=entries.get(index);graphics.renderTooltip(font,java.util.List.of(Component.literal(row.itemName()),Component.literal(row.itemId())),java.util.Optional.empty(),mouseX,mouseY);}
+        }
     }
 
     private void renderRow(GuiGraphics graphics, Font font, ShopItemViewData item, int rowY, int contentRight) {
@@ -132,8 +136,8 @@ public final class ShopItemListPanel {
 
     private void renderHeader(GuiGraphics graphics, Font font) {
         int color = 0xD7E4FF;
-        graphics.drawString(font, Component.literal("Item"), x + 6, y + 4, color, false);
-        UiTextRender.drawRightAligned(graphics, font, "Price", contentRight(), y + 4, 54, color);
+        graphics.drawString(font, Component.literal("상품"), x + 6, y + 4, color, false);
+        UiTextRender.drawRightAligned(graphics, font, "가격", contentRight(), y + 4, 54, color);
     }
 
     private void renderScrollbar(GuiGraphics graphics) {

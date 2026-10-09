@@ -45,7 +45,7 @@ public final class BackendShopBridge {
         body.addProperty("requestId", trade.requestId());
         body.addProperty("itemId", trade.itemId());
         body.addProperty("quantity", trade.quantity());
-        HttpRequest request = HttpRequest.newBuilder(buildUri("/shop/" + trade.transactionType()))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri("/shop/" + trade.transactionType())))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs())).build();
@@ -59,7 +59,7 @@ public final class BackendShopBridge {
     }
 
     private static JsonElement sendGet(String path) throws ShopBridgeException {
-        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri(path)))
                 .GET()
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs()))
                 .build();
@@ -72,7 +72,7 @@ public final class BackendShopBridge {
         body.addProperty("itemId", itemId);
         body.addProperty("quantity", quantity);
 
-        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri(path)))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs()))

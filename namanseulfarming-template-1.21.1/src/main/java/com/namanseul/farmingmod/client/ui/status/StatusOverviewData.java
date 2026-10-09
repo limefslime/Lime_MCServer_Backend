@@ -84,7 +84,7 @@ public record StatusOverviewData(
             boolean runtimeActive
     ) {
         public EventSnapshot {
-            title = title == null || title.isBlank() ? "Event" : title;
+            title = title == null || title.isBlank() ? "이벤트" : title;
             region = region == null || region.isBlank() ? "-" : region;
             effectLabel = effectLabel == null ? "" : effectLabel;
             state = state == null ? "" : state;

@@ -115,7 +115,7 @@ public final class MailListPanel {
     }
 
     private void renderHeader(GuiGraphics graphics, Font font) {
-        graphics.drawString(font, Component.literal("Mail"), x + 6, y + 3, 0xD7E4FF, false);
+        graphics.drawString(font, Component.literal("우편함"), x + 6, y + 3, 0xD7E4FF, false);
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {

@@ -8,7 +8,7 @@ import net.minecraft.network.chat.Component;
 public final class ShopTabView implements HubTabView {
     @Override
     public Component menuLabel() {
-        return Component.literal("Shop");
+        return Component.literal("상점");
     }
 
     @Override

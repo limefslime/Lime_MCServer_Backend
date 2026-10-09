@@ -37,9 +37,11 @@ export async function getPlayerMails(playerId, executor) {
       reward_amount,
       is_claimed,
       created_at,
-      claimed_at
+      claimed_at,
+      to_jsonb(player_mail)->'item_payload' AS item_payload,
+      COALESCE((to_jsonb(player_mail)->>'is_cancelled')::boolean,false) AS is_cancelled
     FROM player_mail
-    WHERE player_id = $1
+    WHERE player_id = $1 AND COALESCE((to_jsonb(player_mail)->>'is_cancelled')::boolean,false)=false
     ORDER BY created_at DESC
     `,
     [playerId]
@@ -110,7 +112,9 @@ export async function getMailById(mailId, executor, options = {}) {
       reward_amount,
       is_claimed,
       created_at,
-      claimed_at
+      claimed_at,
+      to_jsonb(player_mail)->'item_payload' AS item_payload,
+      COALESCE((to_jsonb(player_mail)->>'is_cancelled')::boolean,false) AS is_cancelled
     FROM player_mail
     WHERE id = $1
     ${lockClause}
@@ -132,7 +136,9 @@ export async function findProjectCompletionMail(playerId, projectId, executor) {
       reward_amount,
       is_claimed,
       created_at,
-      claimed_at
+      claimed_at,
+      to_jsonb(player_mail)->'item_payload' AS item_payload,
+      COALESCE((to_jsonb(player_mail)->>'is_cancelled')::boolean,false) AS is_cancelled
     FROM player_mail
     WHERE player_id = $1
       AND title = 'Project Completion'
@@ -157,7 +163,9 @@ export async function findProjectCompletionMails(projectId, executor) {
       reward_amount,
       is_claimed,
       created_at,
-      claimed_at
+      claimed_at,
+      to_jsonb(player_mail)->'item_payload' AS item_payload,
+      COALESCE((to_jsonb(player_mail)->>'is_cancelled')::boolean,false) AS is_cancelled
     FROM player_mail
     WHERE title = 'Project Completion'
       AND message LIKE $1
@@ -180,7 +188,9 @@ export async function findPlayerProjectCompletionMails(playerId, executor) {
       reward_amount,
       is_claimed,
       created_at,
-      claimed_at
+      claimed_at,
+      to_jsonb(player_mail)->'item_payload' AS item_payload,
+      COALESCE((to_jsonb(player_mail)->>'is_cancelled')::boolean,false) AS is_cancelled
     FROM player_mail
     WHERE player_id = $1
       AND title = 'Project Completion'
@@ -236,7 +246,7 @@ export async function findPlayerProjectRewardMails(playerId, executor) {
       reward_amount,
       created_at
     FROM project_reward_logs
-    WHERE player_id = $1
+    WHERE player_id = $1 AND COALESCE((to_jsonb(player_mail)->>'is_cancelled')::boolean,false)=false
     ORDER BY created_at DESC
     `,
     [playerId]

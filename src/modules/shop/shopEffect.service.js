@@ -17,7 +17,7 @@ function isPriceBonusProjectEffect(effect, itemCategory) {
   return (
     effect.is_active === true &&
     effect.effect_type === PRICE_BONUS_EFFECT_TYPE &&
-    effect.effect_target === itemCategory
+    (effect.effect_target === itemCategory || effect.effect_target === "global")
   );
 }
 

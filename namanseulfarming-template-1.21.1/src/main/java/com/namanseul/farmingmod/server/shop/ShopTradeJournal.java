@@ -180,9 +180,9 @@ public final class ShopTradeJournal {
         sendSuccess(player,clientId,"delivery",waiting.toString()); recover(player);
     }
 
-    public static void submitListing(ServerPlayer player, UiRequestPayload payload, String itemId, int quantity, int slot) {
+    public static void submitListing(ServerPlayer player, UiRequestPayload payload, String itemId, int quantity, int slot,int unitPrice) {
         String type = payload.action() == UiAction.SHOP_REGISTER ? "register" : "cancel";
-        var request = new ListingRequestReceipts.Request(payload.requestId(), type, itemId, quantity, slot);
+        var request = new ListingRequestReceipts.Request(payload.requestId(), type, itemId, quantity, slot,unitPrice);
         if (DIRTY.contains(player.getUUID())) persist(player);
         flushListingAudit(player);
         notifyDeferred(player);
@@ -194,7 +194,7 @@ public final class ShopTradeJournal {
             // Shared UI IDs cannot collide with an earlier shop or mail operation.
             match(previous, type, itemId, quantity);
             var fingerprint = new ListingRequestReceipts.Request(previous.getString("clientId"),
-                    previous.getString("transactionType"), previous.getString("itemId"), previous.getInt("quantity"), previous.getInt("slot"));
+                    previous.getString("transactionType"), previous.getString("itemId"), previous.getInt("quantity"), previous.getInt("slot"),previous.contains("unitPrice")?previous.getInt("unitPrice"):(type.equals("register")?1:0));
             receipt = new ListingRequestReceipts.Receipt(fingerprint,
                     JsonParser.parseString(previous.getString("result")).getAsJsonObject());
         } else requireSettled(player);
@@ -203,7 +203,7 @@ public final class ShopTradeJournal {
                 JsonObject response = new JsonObject();
                 if (type.equals("register")) {
                     response.addProperty("registered", true);
-                    response.add("listing", PlayerShopListingService.registerListing(player, itemId, quantity, slot));
+                    response.add("listing", PlayerShopListingService.registerListing(player, itemId, quantity, slot,unitPrice));
                 } else {
                     JsonObject listing = PlayerShopListingService.cancelListing(player, itemId);
                     response.addProperty("canceled", true);
@@ -219,6 +219,7 @@ public final class ShopTradeJournal {
                 record.putString("itemId", itemId);
                 record.putInt("quantity", quantity);
                 record.putInt("slot", slot);
+                record.putInt("unitPrice",unitPrice);
                 record.putLong("createdAt", System.currentTimeMillis());
                 record.putBoolean("accepted", true);
                 record.putString("result", saved.result().toString());
@@ -319,7 +320,7 @@ public final class ShopTradeJournal {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         // NeoForge replaces the player on death; custom escrow must survive that replacement.
         CompoundTag original = event.getOriginal().getPersistentData();
-        for (String key : new String[] {KEY, "nfsShopListings"}) {
+        for (String key : new String[] {KEY, "nfsShopListings", "nfsAdminPending", "nfsInvestPending"}) {
             if (original.contains(key)) player.getPersistentData().put(key, original.getCompound(key).copy());
         }
     }
@@ -418,7 +419,13 @@ public final class ShopTradeJournal {
             var item = result.getAsJsonObject("rewardInfo").get("itemReward");
             if (!item.isJsonNull()) {
                 JsonObject reward = item.getAsJsonObject();
-                returning.add(new ItemStack(resolve(reward.get("itemId").getAsString()), reward.get("quantity").getAsInt()));
+                ItemStack recovered=new ItemStack(resolve(reward.get("itemId").getAsString()),1);
+                if(reward.has("stack")){
+                    try{recovered=ItemStack.parse(player.registryAccess(),net.minecraft.nbt.TagParser.parseTag(reward.get("stack").getAsString())).orElseThrow();}
+                    catch(Exception e){throw new IllegalStateException("Unusable recovery item data; mail retained",e);}
+                    if(recovered.getItem()!=resolve(reward.get("itemId").getAsString())||recovered.getCount()!=1)throw new IllegalStateException("Recovery item identity mismatch");
+                }
+                recovered.setCount(reward.get("quantity").getAsInt());returning.add(recovered);
             }
         } else if (accepted && type.equals("buy")) {
             returning.add(new ItemStack(resolve(pending.getString("itemId")), pending.getInt("quantity")));
@@ -495,6 +502,22 @@ public final class ShopTradeJournal {
         player.getInventory().setChanged();
         player.containerMenu.broadcastChanges();
     }
+    public static void savePlayer(ServerPlayer player){persist(player);}
+    public static void retrySaved(ServerPlayer player){persist(player);recover(player);}
+    public static JsonObject describe(ServerPlayer player){
+        JsonObject result=new JsonObject();
+        result.addProperty("playerId",player.getUUID().toString());
+        result.addProperty("pending",root(player).getCompound("pending").toString());
+        com.google.gson.JsonArray listings=new com.google.gson.JsonArray();
+        CompoundTag stored=player.getPersistentData().getCompound("nfsShopListings");
+        for(String itemId:stored.getAllKeys()){
+            CompoundTag entry=stored.getCompound(itemId);JsonObject row=new JsonObject();row.addProperty("playerId",player.getUUID().toString());row.addProperty("itemId",itemId);row.addProperty("unitPrice",entry.getInt("unitPrice"));int count=0;
+            ListTag stacks=entry.getList("stacks",10);for(int i=0;i<stacks.size();i++){var stack=ItemStack.parse(player.registryAccess(),stacks.getCompound(i)).orElse(ItemStack.EMPTY);count+=stack.getCount();if(i==0)row.addProperty("itemName",stack.getHoverName().getString());}
+            row.addProperty("quantity",count);listings.add(row);
+        }
+        result.add("listings",listings);
+        return result;
+    }
     private static void persist(ServerPlayer player) {
         DIRTY.add(player.getUUID());
         try {
@@ -506,7 +529,7 @@ public final class ShopTradeJournal {
             if (!expected.getList("Inventory", 10).equals(saved.getList("Inventory", 10))) {
                 throw new IllegalStateException("player save does not contain inventory");
             }
-            for (String key : new String[] {KEY, "nfsShopListings"}) {
+            for (String key : new String[] {KEY, "nfsShopListings", "nfsAdminPending", "nfsInvestPending"}) {
                 if (!expected.getCompound("NeoForgeData").getCompound(key)
                         .equals(saved.getCompound("NeoForgeData").getCompound(key))) {
                     throw new IllegalStateException("player save does not contain journal and original escrow");

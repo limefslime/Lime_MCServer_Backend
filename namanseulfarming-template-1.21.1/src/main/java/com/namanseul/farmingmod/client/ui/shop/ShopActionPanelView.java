@@ -35,7 +35,7 @@ public final class ShopActionPanelView {
         int labelWidth = Math.max(52, Math.min(92, contentWidth / 3));
 
         if (selectedItem == null) {
-            UiTextRender.drawEllipsized(graphics, font, "Choose an item from the list.", x, lineY, contentWidth, 0xDDE6F9);
+            UiTextRender.drawEllipsized(graphics, font, "목록에서 상품을 선택하세요.", x, lineY, contentWidth, 0xDDE6F9);
         } else {
             String itemName = selectedItem.itemName() == null || selectedItem.itemName().isBlank()
                     ? selectedItem.itemId()
@@ -45,38 +45,38 @@ public final class ShopActionPanelView {
             graphics.fill(x, lineY, x + contentWidth, lineY + 1, 0x995A6A8A);
             lineY += 6;
 
-            drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "Buy:", formatAmount(selectedItem.currentBuyPrice()), 0xC7D7F1, 0xEAF1FF);
+            drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "구매:", formatAmount(selectedItem.currentBuyPrice()), 0xC7D7F1, 0xEAF1FF);
             lineY += 12;
-            drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "Sell:", formatAmount(selectedItem.currentSellPrice()), 0xC7D7F1, 0xEAF1FF);
+            drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "판매:", formatAmount(selectedItem.currentSellPrice()), 0xC7D7F1, 0xEAF1FF);
             lineY += 14;
 
             if (buyPreview != null) {
-                drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "Buy Total:", formatAmount(buyPreview.netTotalPrice()), 0xC7D7F1, 0xEAF1FF);
+                drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "구매 합계:", formatAmount(buyPreview.netTotalPrice()), 0xC7D7F1, 0xEAF1FF);
                 lineY += 12;
                 if (buyPreview.feeAmount() > 0 && lineY <= infoBottom) {
-                    drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "Buy Fee:", formatAmount(buyPreview.feeAmount()), 0xBFD0E8, 0xDDE6F9);
+                    drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "구매 수수료:", formatAmount(buyPreview.feeAmount()), 0xBFD0E8, 0xDDE6F9);
                     lineY += 12;
                 }
             }
 
             if (sellPreview != null && lineY <= infoBottom) {
-                drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "Sell Total:", formatAmount(sellPreview.netTotalPrice()), 0xC7D7F1, 0xEAF1FF);
+                drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "판매 합계:", formatAmount(sellPreview.netTotalPrice()), 0xC7D7F1, 0xEAF1FF);
                 lineY += 12;
                 if (sellPreview.feeAmount() > 0 && lineY <= infoBottom) {
-                    drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "Sell Fee:", formatAmount(sellPreview.feeAmount()), 0xBFD0E8, 0xDDE6F9);
+                    drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "판매 수수료:", formatAmount(sellPreview.feeAmount()), 0xBFD0E8, 0xDDE6F9);
                     lineY += 12;
                 }
             }
 
             if (selectedItem.playerListed() && lineY <= infoBottom) {
-                drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "Listed:", formatAmount(Math.max(1, selectedItem.listingQuantity())), 0xBFD0E8, 0xDDE6F9);
+                drawLine(graphics, font, x, lineY, contentWidth, labelWidth, "등록 수량:", formatAmount(Math.max(1, selectedItem.listingQuantity())), 0xBFD0E8, 0xDDE6F9);
                 lineY += 12;
             }
 
             if (lastTrade != null
                     && selectedItem.itemId().equals(lastTrade.itemId())
                     && lineY <= infoBottom) {
-                String action = "buy".equalsIgnoreCase(lastTrade.transactionType()) ? "Bought" : "Sold";
+                String action = "buy".equalsIgnoreCase(lastTrade.transactionType()) ? "구매 완료" : "판매 완료";
                 UiTextRender.drawEllipsized(
                         graphics,
                         font,
@@ -95,9 +95,9 @@ public final class ShopActionPanelView {
             state = quantityError;
             stateColor = 0xFF8E8E;
         } else if (tradeLoading) {
-            state = "Processing order...";
+            state = "거래를 처리하는 중…";
         } else if (previewLoading) {
-            state = "Updating quote...";
+            state = "견적을 갱신하는 중…";
         } else if (statusMessage != null && !statusMessage.isBlank()) {
             state = statusMessage;
             stateColor = 0xDDE6F9;
@@ -107,7 +107,7 @@ public final class ShopActionPanelView {
         if (state != null) {
             UiTextRender.drawEllipsized(graphics, font, state, x, messageY, contentWidth, stateColor);
         } else if (selectedItem != null) {
-            UiTextRender.drawEllipsized(graphics, font, "Pick quantity and choose Buy or Sell.", x, messageY, contentWidth, 0xBFD0E8);
+            UiTextRender.drawEllipsized(graphics, font, "수량을 입력하고 구매 또는 판매를 선택하세요.", x, messageY, contentWidth, 0xBFD0E8);
         }
     }
 

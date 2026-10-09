@@ -115,6 +115,7 @@ public final class ShopJsonParser {
                 readBoolean(root, "isActive", true),
                 readBoolean(root, "playerListed", false),
                 readInt(root, "listingQuantity", 0),
+                readInt(root, "listingUnitPrice", 0),
                 readInt(root, "stockQuantity", 0)
         );
     }

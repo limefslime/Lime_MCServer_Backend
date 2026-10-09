@@ -8,7 +8,7 @@ import net.minecraft.network.chat.Component;
 public final class MailTabView implements HubTabView {
     @Override
     public Component menuLabel() {
-        return Component.literal("Mail");
+        return Component.literal("우편함");
     }
 
     @Override

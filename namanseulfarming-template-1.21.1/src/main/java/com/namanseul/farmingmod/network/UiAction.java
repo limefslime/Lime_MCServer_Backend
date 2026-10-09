@@ -1,6 +1,9 @@
 package com.namanseul.farmingmod.network;
 
 public enum UiAction {
+    ADMIN_CATALOG,
+    ADMIN_READ,
+    ADMIN_EXECUTE,
     OPEN,
     INIT,
     SUMMARY,

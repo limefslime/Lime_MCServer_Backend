@@ -1,0 +1,10 @@
+import {Router} from 'express';
+import {adminCatalog,adminRead,adminExecute,AdminError,uuid} from './admin.operations.js';
+import {loadEconomySettings} from '../economy/economy.settings.js';
+const router=Router();
+router.use((req,res,next)=>{try{req.adminId=uuid(req.get('X-NFS-Admin-Id'));req.adminName=req.get('X-NFS-Admin-Name');if(!req.adminName)throw new AdminError('관리자 정보가 필요합니다.');next();}catch(e){res.status(e.status??400).json({message:e.message});}});
+const wrap=fn=>async(req,res)=>{try{res.json(await fn(req));}catch(e){if(e instanceof AdminError)return res.status(e.status).json({message:e.message});console.error('[admin] operation failed',e.code??e.name);res.status(503).json({message:'관리 작업 확인 대기 중입니다. 같은 요청 번호로 재시도하세요.'});}};
+router.get('/catalog',wrap(req=>adminCatalog(req.adminId)));
+router.post('/read',wrap(req=>adminRead(req.adminId,req.body.action,req.body.fields)));
+router.post('/execute',wrap(async req=>{const result=await adminExecute(req.adminId,req.adminName,req.body);if(req.body.action==='rules_save')await loadEconomySettings();return result;}));
+export default router;

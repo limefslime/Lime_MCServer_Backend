@@ -29,7 +29,7 @@ public final class BackendMailBridge {
         JsonObject body = new JsonObject();
         body.addProperty("playerId", playerId);
         body.addProperty("requestId", requestId);
-        HttpRequest request = HttpRequest.newBuilder(buildUri("/mail/" + mailId + "/claim"))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri("/mail/" + mailId + "/claim")))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs())).build();
@@ -62,7 +62,7 @@ public final class BackendMailBridge {
     }
 
     private static JsonElement sendGet(String path) throws MailBridgeException {
-        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri(path)))
                 .GET()
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs()))
                 .build();
@@ -74,7 +74,7 @@ public final class BackendMailBridge {
     }
 
     private static JsonElement sendPost(String path, JsonObject body) throws MailBridgeException {
-        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri(path)))
                 .header("Content-Type", "application/json")
                 .POST(body == null
                         ? HttpRequest.BodyPublishers.noBody()

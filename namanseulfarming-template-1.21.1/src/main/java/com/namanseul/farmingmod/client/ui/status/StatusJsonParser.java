@@ -312,7 +312,7 @@ public final class StatusJsonParser {
     }
 
     private static String buildEffectLabel(String effectType, @Nullable Double effectValue) {
-        String type = effectType == null || effectType.isBlank() ? "Effect" : humanizeWords(effectType);
+        String type = effectType == null || effectType.isBlank() ? "효과" : humanizeWords(effectType);
         if (effectValue == null) {
             return type;
         }
@@ -327,9 +327,9 @@ public final class StatusJsonParser {
     private static String normalizeFocusStatus(String rawStatus) {
         String normalized = normalizeKey(rawStatus);
         return switch (normalized) {
-            case "active", "running" -> "Active";
-            case "idle", "waiting", "cooldown" -> "Waiting";
-            case "completed", "complete", "done", "ended" -> "Completed";
+            case "active", "running" -> "활성";
+            case "idle", "waiting", "cooldown" -> "대기";
+            case "completed", "complete", "done", "ended" -> "완료";
             default -> humanizeWords(rawStatus);
         };
     }
@@ -337,16 +337,16 @@ public final class StatusJsonParser {
     private static String normalizeEventStatus(String rawStatus, boolean runtimeActive) {
         String normalized = normalizeKey(rawStatus);
         if ("active".equals(normalized) || "running".equals(normalized)) {
-            return "Live";
+            return "진행 중";
         }
         if ("waiting".equals(normalized) || "pending".equals(normalized) || "ready".equals(normalized)) {
-            return "Starting Soon";
+            return "시작 예정";
         }
         if ("completed".equals(normalized) || "ended".equals(normalized) || "closed".equals(normalized)) {
-            return "Ended";
+            return "종료";
         }
         if (normalized.isBlank()) {
-            return runtimeActive ? "Live" : "Paused";
+            return runtimeActive ? "진행 중" : "중지";
         }
         return humanizeWords(rawStatus);
     }

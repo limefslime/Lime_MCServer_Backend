@@ -153,7 +153,7 @@ export async function getActiveEvents(executor) {
       starts_at,
       ends_at
     FROM events
-    WHERE
+    WHERE status = 'active' AND (
       (
         starts_at IS NULL
         AND ends_at IS NULL
@@ -165,6 +165,7 @@ export async function getActiveEvents(executor) {
         AND (starts_at IS NULL OR starts_at <= NOW())
         AND (ends_at IS NULL OR ends_at > NOW())
       )
+    )
     ORDER BY starts_at DESC NULLS LAST, created_at DESC
     `
   );

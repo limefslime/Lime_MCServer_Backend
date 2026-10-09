@@ -81,7 +81,7 @@ public final class BackendInvestBridge {
     }
 
     private static JsonElement sendGet(String path) throws InvestBridgeException {
-        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri(path)))
                 .GET()
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs()))
                 .build();
@@ -89,7 +89,7 @@ public final class BackendInvestBridge {
     }
 
     private static JsonElement sendPost(String path, JsonObject body) throws InvestBridgeException {
-        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri(path)))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs()))

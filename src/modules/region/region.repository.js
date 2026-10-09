@@ -39,10 +39,10 @@ export async function findSellTotalsByCategory(executor) {
   const db = getExecutor(executor);
   const result = await db.query(
     `
-    SELECT category, COALESCE(SUM(total_price), 0) AS total_price
+    SELECT CASE category WHEN 'agri' THEN 'farming' WHEN 'port' THEN 'fishing' WHEN 'industry' THEN 'mining' ELSE category END AS category, COALESCE(SUM(total_price), 0) AS total_price
     FROM shop_transactions
     WHERE transaction_type = 'sell'
-      AND category IN ('farming', 'fishing', 'mining')
+      AND category IN ('agri', 'port', 'industry')
     GROUP BY category
     `
   );

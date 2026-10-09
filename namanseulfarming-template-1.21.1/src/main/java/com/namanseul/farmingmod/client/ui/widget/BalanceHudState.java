@@ -25,8 +25,8 @@ public final class BalanceHudState {
 
     public static String labelText() {
         if (currentBalance == null) {
-            return "Balance: -";
+            return "잔액: 확인 중";
         }
-        return "Balance: " + NumberFormat.getIntegerInstance().format(currentBalance);
+        return "잔액: " + NumberFormat.getIntegerInstance().format(currentBalance);
     }
 }

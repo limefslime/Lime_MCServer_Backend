@@ -1,0 +1,13 @@
+BEGIN;
+CREATE TABLE IF NOT EXISTS economy_settings(key TEXT PRIMARY KEY,value JSONB NOT NULL,revision INTEGER NOT NULL DEFAULT 1,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS admin_actor_locks(actor_id UUID PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS admin_operations(actor_id UUID NOT NULL,request_id UUID NOT NULL,action TEXT NOT NULL,fingerprint TEXT NOT NULL,actor_name TEXT NOT NULL,reason TEXT NOT NULL,before_state JSONB NOT NULL,result JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(actor_id,request_id));
+CREATE TABLE IF NOT EXISTS admin_permissions(actor_id UUID PRIMARY KEY,permissions JSONB NOT NULL);
+CREATE TABLE IF NOT EXISTS economy_player_controls(player_id UUID PRIMARY KEY REFERENCES players(id),frozen BOOLEAN NOT NULL DEFAULT FALSE);
+CREATE TABLE IF NOT EXISTS admin_refunds(source_id TEXT PRIMARY KEY,actor_id UUID NOT NULL,request_id UUID NOT NULL);
+ALTER TABLE player_mail ADD COLUMN IF NOT EXISTS item_payload JSONB;
+ALTER TABLE player_mail ADD COLUMN IF NOT EXISTS is_cancelled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE delivery_contracts DROP CONSTRAINT IF EXISTS delivery_contracts_status_check;
+ALTER TABLE delivery_contracts ADD CONSTRAINT delivery_contracts_status_check CHECK(status IN ('active','completed','cancelled'));
+CREATE TABLE IF NOT EXISTS investment_receipts(player_id UUID NOT NULL REFERENCES players(id),request_id UUID NOT NULL,project_id UUID NOT NULL REFERENCES invest_projects(id),amount INTEGER NOT NULL,result JSONB NOT NULL,PRIMARY KEY(player_id,request_id));
+COMMIT;

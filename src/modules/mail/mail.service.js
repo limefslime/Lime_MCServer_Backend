@@ -441,6 +441,7 @@ export async function claimMail(mailId, input = {}, transaction = withTransactio
     if (!mail || mail.player_id !== playerId) {
       throw new MailServiceError(mailErrorCode.MAIL_NOT_FOUND, 'mail not found');
     }
+    if (mail.is_cancelled) throw new MailServiceError(mailErrorCode.MAIL_NOT_FOUND, "mail cancelled");
     if (mail.is_claimed) throw new MailServiceError(mailErrorCode.MAIL_ALREADY_CLAIMED, 'mail already claimed');
     // A malformed item tag must not silently consume a mail without delivering its item.
     if (hasItemRewardTag(mail.message) && !extractItemRewardFromMessage(mail.message)) {
@@ -450,6 +451,11 @@ export async function claimMail(mailId, input = {}, transaction = withTransactio
     if (!mailRow) await resolveClaimFailure(mailId, client);
     const walletAfter = await applyMailReward({ mailRow, executor: client });
     let result = buildClaimResult({ mailRow, walletRow: walletAfter });
+    if(mail.item_payload?.stack){
+      const reward=result.rewardInfo?.itemReward;
+      if(!reward||reward.itemId!==mail.item_payload.itemId||reward.quantity!==mail.item_payload.quantity)throw new MailServiceError(mailErrorCode.INVALID_ITEM_REWARD,'Invalid saved item data');
+      reward.stack=mail.item_payload.stack;
+    }
     if (protectedClaim) {
       result = JSON.parse(JSON.stringify({ ...result, playerId, requestId, replayed: false }));
       await client.query('INSERT INTO mail_claim_receipts(player_id,request_id,mail_id,result) VALUES($1,$2,$3,$4)',

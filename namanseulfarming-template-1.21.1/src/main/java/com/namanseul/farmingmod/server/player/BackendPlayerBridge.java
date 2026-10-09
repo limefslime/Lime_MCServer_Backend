@@ -40,7 +40,7 @@ public final class BackendPlayerBridge {
     }
 
     private static JsonElement sendGet(String path) throws PlayerBridgeException {
-        HttpRequest request = HttpRequest.newBuilder(buildUri(path))
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(buildUri(path)))
                 .GET()
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs()))
                 .build();

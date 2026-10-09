@@ -1,4 +1,5 @@
-﻿import { withTransaction } from "../../db/pool.js";
+﻿import {economyRules} from "../economy/economy.settings.js";
+import { withTransaction } from "../../db/pool.js";
 import * as mailService from "../mail/mail.service.js";
 import {
   activateProjectEffectByProjectId as activateProjectEffectByProjectIdRow,
@@ -41,16 +42,16 @@ const PROJECT_REGIONS = new Set([
   "fishing",
   "mining",
 ]);
-const PROJECT_EFFECT_TARGETS = new Set(["farming", "fishing", "mining", "global"]);
+const PROJECT_EFFECT_TARGETS = new Set(["agri", "port", "industry", "global"]);
 const PROJECT_EFFECT_TYPES = new Set(["price_bonus", "xp_bonus", "focus_bonus"]);
 const PROJECT_REGION_TO_EFFECT_TARGET = Object.freeze({
-  agri: "farming",
-  port: "fishing",
-  industry: "mining",
+  agri: "agri",
+  port: "port",
+  industry: "industry",
   global: "global",
-  farming: "farming",
-  fishing: "fishing",
-  mining: "mining",
+  farming: "agri",
+  fishing: "port",
+  mining: "industry",
 });
 
 const FIXED_EFFECT_TYPE = "price_bonus";
@@ -298,7 +299,7 @@ function buildRewardSummary(totalContributors) {
 }
 
 function calculateProjectRewardAmount(contributionAmount) {
-  return Math.floor(contributionAmount * PROJECT_REWARD_RATE);
+  return Math.floor(contributionAmount * economyRules().projectRewardRate);
 }
 
 async function createProjectRewardMail({ playerId, projectName, rewardAmount, executor }) {
@@ -690,10 +691,11 @@ export async function getCompletedProjects(executor) {
   return { items };
 }
 
-export async function completeProject(projectId) {
+export async function completeProject(projectId,executor) {
   validateProjectId(projectId);
 
-  return withTransaction(async (client) => {
+  const transaction=executor?work=>work(executor):withTransaction;
+  return transaction(async (client) => {
     const project = await getProjectForCompletionOrThrow(projectId, client);
 
     await ensureNoExistingProjectEffect(projectId, client);
@@ -737,3 +739,11 @@ export async function getActiveEffects() {
 }
 
 
+
+export async function distributeCompletedProjectRewards(projectId,executor){
+ const project=await getProjectForCompletionOrThrow(projectId,executor).catch(async error=>{
+   const result=await executor.query('SELECT * FROM invest_projects WHERE id=$1',[projectId]);if(!result.rows[0])throw error;return result.rows[0];
+ });
+ const contributionTotals=await getValidatedContributionTotals(projectId,executor);
+ return distributeProjectRewards({projectId,projectName:project.name,contributionTotals,executor});
+}

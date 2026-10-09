@@ -17,8 +17,8 @@ public final class BackendDeliveryBridge {
         String token = System.getenv("NFS_INTEGRATION_API_TOKEN");
         if (token == null || token.length() < 32 || Config.backendBaseUrl().isBlank())
             throw new IllegalArgumentException("납품 서버 연결 설정을 확인해주세요.");
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(Config.backendBaseUrl().replaceAll("/+$", "")+"/integration/deliveries"+path))
-                .header("Authorization","Bearer "+token).timeout(Duration.ofMillis(Config.backendTimeoutMs()));
+        HttpRequest.Builder request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(URI.create(Config.backendBaseUrl().replaceAll("/+$", "")+"/integration/deliveries"+path)))
+                .setHeader("Authorization","Bearer "+token).timeout(Duration.ofMillis(Config.backendTimeoutMs()));
         if (body == null) request.GET();
         else request.header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(body.toString()));
         return HTTP.send(request.build(),HttpResponse.BodyHandlers.ofString());

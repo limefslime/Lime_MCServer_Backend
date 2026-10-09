@@ -1,6 +1,7 @@
 package com.namanseul.farmingmod.network;
 
 public enum UiScreenType {
+    ADMIN,
     HUB,
     SHOP,
     MAIL,

@@ -37,7 +37,7 @@ export async function upsertFocusState(focusRegion, executor) {
       'active'::TEXT AS status,
       calculated_at
     `,
-    [focusRegion]
+    [{farming:"agri",fishing:"port",mining:"industry"}[focusRegion]??focusRegion]
   );
   return result.rows[0];
 }
@@ -46,11 +46,11 @@ export async function findRecentSellTotalsByCategory(executor) {
   const db = getExecutor(executor);
   const result = await db.query(
     `
-    SELECT category, COALESCE(SUM(total_price), 0) AS total_price
+    SELECT CASE category WHEN 'agri' THEN 'farming' WHEN 'port' THEN 'fishing' WHEN 'industry' THEN 'mining' ELSE category END AS category, COALESCE(SUM(total_price), 0) AS total_price
     FROM shop_transactions
     WHERE transaction_type = 'sell'
       AND created_at >= NOW() - INTERVAL '24 hours'
-      AND category IN ('mining', 'farming', 'fishing', 'misc')
+      AND category IN ('industry', 'agri', 'port', 'misc')
     GROUP BY category
     `
   );

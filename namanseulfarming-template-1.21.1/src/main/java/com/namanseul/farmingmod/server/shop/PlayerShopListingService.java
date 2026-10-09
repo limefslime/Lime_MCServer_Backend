@@ -74,9 +74,10 @@ public final class PlayerShopListingService {
     }
 
     /** Inventory and escrow share the same player save. Call only on the server thread. */
-    static JsonObject registerListing(ServerPlayer player, String itemId, int quantity, int preferredSlot) {
+    static JsonObject registerListing(ServerPlayer player, String itemId, int quantity, int preferredSlot,int unitPrice) {
+        if(unitPrice<=0)throw new IllegalArgumentException("Listing price must be positive");
         ListingEntry existing = readListings(player.getUUID()).get(itemId);
-        if (existing != null) Math.addExact(existing.quantity, quantity);
+        if (existing != null) {Math.addExact(existing.quantity, quantity);if(existing.unitPrice!=unitPrice)throw new IllegalArgumentException("Cancel existing listing before changing its price");}
         if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
         List<ItemStack> inventory = player.getInventory().items;
         List<Integer> slots = new ArrayList<>();
@@ -101,11 +102,12 @@ public final class PlayerShopListingService {
         // Serialize before mutating inventory: codec errors leave the player's items untouched.
         for (ItemStack stack : captured) stacks.add(stack.save(player.registryAccess()));
         entry.put("stacks", stacks);
+        entry.putInt("unitPrice",unitPrice);
         if (!entry.contains("createdAt")) entry.putLong("createdAt", System.currentTimeMillis());
         listings.put(itemId, entry);
         int total = Math.addExact(existing == null ? 0 : existing.quantity, quantity);
         String name = existing == null ? captured.getFirst().getHoverName().getString() : existing.itemName;
-        JsonObject result = new ListingEntry(itemId, name, "player_listing", total, entry.getLong("createdAt")).toShopItemJson();
+        JsonObject result = new ListingEntry(itemId, name, "player_listing", total, entry.getLong("createdAt"),unitPrice).toShopItemJson();
         for (var take : taken.entrySet()) inventory.get(take.getKey()).shrink(take.getValue());
         player.getPersistentData().put(STORAGE_KEY, listings);
         return result;
@@ -166,7 +168,7 @@ public final class PlayerShopListingService {
                 quantity = Math.addExact(quantity, stack.getCount());
                 if (i == 0) name = stack.getHoverName().getString();
             }
-            result.put(itemId, new ListingEntry(itemId, name, "player_listing", quantity, entry.getLong("createdAt")));
+            result.put(itemId, new ListingEntry(itemId, name, "player_listing", quantity, entry.getLong("createdAt"),entry.getInt("unitPrice")));
         }
         return result;
     }
@@ -206,6 +208,7 @@ public final class PlayerShopListingService {
     private static void applyListingMetadata(JsonObject target, ListingEntry listing) {
         target.addProperty("playerListed", true);
         target.addProperty("listingQuantity", Math.max(0, listing.quantity));
+        target.addProperty("listingUnitPrice", listing.unitPrice);
         target.addProperty("listedAtEpochMillis", listing.createdAtEpochMillis);
 
         String itemName = readString(target, "itemName");
@@ -257,17 +260,18 @@ public final class PlayerShopListingService {
             String itemName,
             String category,
             int quantity,
-            long createdAtEpochMillis
+            long createdAtEpochMillis,
+            int unitPrice
     ) {
         JsonObject toShopItemJson() {
             JsonObject json = new JsonObject();
             json.addProperty("itemId", itemId);
             json.addProperty("itemName", itemName);
             json.addProperty("category", category);
-            json.addProperty("buyPrice", 0);
-            json.addProperty("sellPrice", 0);
-            json.addProperty("currentBuyPrice", 0);
-            json.addProperty("currentSellPrice", 0);
+            json.addProperty("buyPrice", unitPrice);
+            json.addProperty("sellPrice", unitPrice);
+            json.addProperty("currentBuyPrice", unitPrice);
+            json.addProperty("currentSellPrice", unitPrice);
             json.addProperty("pricingSummary", "Registered by player. Cancel sell to return original items to inventory.");
 
             JsonArray reasonTags = new JsonArray();
@@ -277,6 +281,7 @@ public final class PlayerShopListingService {
             json.addProperty("isActive", true);
             json.addProperty("playerListed", true);
             json.addProperty("listingQuantity", quantity);
+            json.addProperty("listingUnitPrice", unitPrice);
             json.addProperty("listedAtEpochMillis", createdAtEpochMillis);
             return json;
         }

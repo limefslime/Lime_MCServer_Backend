@@ -140,11 +140,11 @@ public final class UiClientNetworking {
         return send(UiScreenType.DELIVERY,action,payload);
     }
 
-    private static String send(UiScreenType screenType, UiAction action) {
+    public static String send(UiScreenType screenType, UiAction action) {
         return send(screenType, action, null);
     }
 
-    private static String send(UiScreenType screenType, UiAction action, JsonObject payloadJson) {
+    public static String send(UiScreenType screenType, UiAction action, JsonObject payloadJson) {
         String requestId = UUID.randomUUID().toString();
         String encodedPayload = payloadJson == null ? null : GSON.toJson(payloadJson);
         UiRequestPayload payload = new UiRequestPayload(requestId, screenType, action, encodedPayload);

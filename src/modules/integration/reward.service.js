@@ -1,3 +1,4 @@
+import { settingValue,economyRules } from '../economy/economy.settings.js';
 import { readFile } from 'node:fs/promises';
 import { withTransaction } from '../../db/pool.js';
 import { ensurePlayerExists, ensureWalletExists, insertLedgerEntry } from '../wallet/wallet.repository.js';
@@ -6,10 +7,11 @@ import { validateReward, rewardDecision, RewardError } from './reward.core.js';
 export async function grantQuestReward(input, transaction = withTransaction) {
   // Read policies on each claim so administrators can change values without restart.
   const path = process.env.S2_REWARD_POLICY_PATH || new URL('../../../config/s2-rewards.json', import.meta.url);
-  const policies = JSON.parse(await readFile(path, 'utf8'));
+  const fallback=JSON.parse(await readFile(path,'utf8'));
+  return transaction(async client=>{
+  const policies = await settingValue('rewards',fallback,client);
   const claim = validateReward(input, policies);
   const { playerId, requestId, rewardId, amount, cooldownSeconds } = claim;
-  return transaction(async (client) => {
     await ensurePlayerExists(playerId, client);
     await ensureWalletExists(playerId, client);
     // Serialize all rewards for this UUID; the database lock works across API workers.
@@ -31,7 +33,7 @@ export async function grantQuestReward(input, transaction = withTransaction) {
     if (decision.grant) {
       const balance = await client.query(
         `UPDATE wallets SET balance=balance+$2, updated_at=NOW()
-         WHERE player_id=$1 AND balance::bigint+$2 <= 2147483647 RETURNING balance`, [playerId, amount]);
+         WHERE player_id=$1 AND balance::bigint+$2 <= $3 RETURNING balance`, [playerId, amount,economyRules().walletLimit]);
       if (!balance.rows.length) throw new RewardError('wallet balance limit exceeded', 409);
       const ledger = await insertLedgerEntry({ playerId, type: 'add', amount, reason: 'quest_reward' }, client);
       await client.query(

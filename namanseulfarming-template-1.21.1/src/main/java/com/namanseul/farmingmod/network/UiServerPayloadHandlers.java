@@ -55,10 +55,11 @@ public final class UiServerPayloadHandlers {
 
         try {
             switch (payload.screenType()) {
+                case ADMIN -> com.namanseul.farmingmod.server.admin.AdminUiService.handle(player,payload);
                 case HUB -> handleHubRequest(payload, player);
                 case SHOP -> handleShopRequest(payload, player);
                 case MAIL -> handleMailRequest(payload, player);
-                case INVEST -> handleInvestRequest(payload, player);
+                case INVEST -> com.namanseul.farmingmod.server.invest.ProjectUiService.handle(player,payload);
                 case STATUS -> handleStatusRequest(payload, player);
                 case PLAYER -> handlePlayerRequest(payload, player);
                 case DELIVERY -> com.namanseul.farmingmod.server.delivery.DeliveryUiService.handle(player,payload);
@@ -86,15 +87,6 @@ public final class UiServerPayloadHandlers {
             ));
         } catch (BackendMailBridge.MailBridgeException | MailUiService.MailUiException ex) {
             NamanseulFarming.LOGGER.warn("[UI] Mail bridge failed id={} action={} error={}",
-                    payload.requestId(), payload.action().serialized(), ex.getMessage());
-            PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
-                    payload.requestId(),
-                    payload.screenType(),
-                    payload.action(),
-                    ex.getMessage()
-            ));
-        } catch (BackendInvestBridge.InvestBridgeException | InvestUiService.InvestUiException ex) {
-            NamanseulFarming.LOGGER.warn("[UI] Invest bridge failed id={} action={} error={}",
                     payload.requestId(), payload.action().serialized(), ex.getMessage());
             PacketDistributor.sendToPlayer(player, UiResponsePayload.failed(
                     payload.requestId(),
@@ -211,7 +203,8 @@ public final class UiServerPayloadHandlers {
                 try {
                     ShopTradeJournal.submitListing(player, payload, readItemId(requestPayload),
                             register ? readQuantity(requestPayload) : 0,
-                            register ? readInt(requestPayload, "slot", -1) : -1);
+                            register ? readInt(requestPayload, "slot", -1) : -1,
+                            register ? readInt(requestPayload,"unitPrice",0):0);
                 } catch (IllegalStateException ex) { throw new IllegalArgumentException(ex.getMessage()); }
                 return;
             }
@@ -521,7 +514,7 @@ public final class UiServerPayloadHandlers {
         }
         int quantity;
         try {
-            quantity = value.getAsInt();
+            quantity = new java.math.BigDecimal(value.getAsString()).intValueExact();
         } catch (Exception ex) {
             throw new IllegalArgumentException("quantity must be a positive integer");
         }

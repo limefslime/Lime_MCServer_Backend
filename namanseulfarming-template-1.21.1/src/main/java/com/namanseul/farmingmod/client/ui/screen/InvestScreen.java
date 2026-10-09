@@ -75,7 +75,7 @@ public final class InvestScreen extends BaseGameScreen {
     private int listPanelHeight = Integer.MIN_VALUE;
 
     public InvestScreen(@Nullable Screen returnScreen) {
-        super(Component.literal("Invest"));
+        super(Component.literal("프로젝트"));
         this.returnScreen = returnScreen;
     }
 
@@ -98,7 +98,7 @@ public final class InvestScreen extends BaseGameScreen {
         initCommonButtons(frameX + frameWidth - 4, frameY + 8);
         initRefreshButton(frameX + frameWidth - 4, frameY + 8);
         if (closeButton != null) {
-            closeButton.setMessage(Component.literal("Back"));
+            closeButton.setMessage(Component.literal("돌아가기"));
         }
 
         ensureListPanel();
@@ -144,17 +144,17 @@ public final class InvestScreen extends BaseGameScreen {
         renderSectionTitle(graphics, title, frameX + 10, frameY + 14);
 
         renderPanel(graphics, listX, listY, listWidth, listHeight);
-        renderSectionTitle(graphics, Component.literal("Stocks"), listX + 6, listY + 6);
+        renderSectionTitle(graphics, Component.literal("프로젝트"), listX + 6, listY + 6);
         if (stockListPanel != null) {
             stockListPanel.render(graphics, font, mouseX, mouseY);
         }
 
         renderPanel(graphics, detailX, detailY, detailWidth, detailHeight);
-        renderSectionTitle(graphics, Component.literal("Detail"), detailX + 6, detailY + 6);
+        renderSectionTitle(graphics, Component.literal("상세"), detailX + 6, detailY + 6);
         renderClipped(graphics, detailX, detailY, detailWidth, detailHeight, () -> renderDetailPanel(graphics));
 
         renderPanel(graphics, actionX, actionY, actionWidth, actionHeight);
-        renderSectionTitle(graphics, Component.literal("Trade"), actionX + 6, actionY + 6);
+        renderSectionTitle(graphics, Component.literal("거래"), actionX + 6, actionY + 6);
         renderClipped(graphics, actionX, actionY, actionWidth, actionHeight, () -> renderActionPanel(graphics));
     }
 
@@ -182,7 +182,7 @@ public final class InvestScreen extends BaseGameScreen {
                 0,
                 80,
                 16,
-                Component.literal("Quantity")
+                Component.literal("수량")
         ));
         quantityInput.setMaxLength(9);
         quantityInput.setFilter(value -> value.isEmpty() || value.matches("\\d{0,9}"));
@@ -190,7 +190,7 @@ public final class InvestScreen extends BaseGameScreen {
         quantityInput.setResponder(value -> onQuantityChanged());
 
         buyButton = addRenderableWidget(UiButton.create(
-                Component.literal("BUY"),
+                Component.literal("구매"),
                 0,
                 0,
                 70,
@@ -199,7 +199,7 @@ public final class InvestScreen extends BaseGameScreen {
         ));
 
         sellButton = addRenderableWidget(UiButton.create(
-                Component.literal("SELL"),
+                Component.literal("판매"),
                 0,
                 0,
                 70,
@@ -286,7 +286,7 @@ public final class InvestScreen extends BaseGameScreen {
         int y = detailY + 22;
 
         if (selectedStock == null) {
-            UiTextRender.drawEllipsized(graphics, font, "Select a stock.", contentX, y, contentWidth, 0xC7D7F1);
+            UiTextRender.drawEllipsized(graphics, font, "프로젝트를 선택하세요.", contentX, y, contentWidth, 0xC7D7F1);
             return;
         }
 
@@ -374,9 +374,9 @@ public final class InvestScreen extends BaseGameScreen {
             }
         }
 
-        UiTextRender.drawLabelValue(graphics, font, "Buy:", buyValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        UiTextRender.drawLabelValue(graphics, font, "구매:", buyValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
         y += 12;
-        UiTextRender.drawLabelValue(graphics, font, "Sell:", sellValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
+        UiTextRender.drawLabelValue(graphics, font, "판매:", sellValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
         y += 16;
         UiTextRender.drawLabelValue(graphics, font, "Total:", totalValue, contentX, y, contentWidth, ACTION_LABEL_WIDTH, 0xC7D7F1, 0xEAF1FF);
         if (feeValue != null) {
@@ -410,7 +410,7 @@ public final class InvestScreen extends BaseGameScreen {
     private void requestStockList(boolean forceRefresh) {
         listLoading = true;
         detailReady = false;
-        setLoading(true, Component.literal("Loading stocks..."));
+        setLoading(true, Component.literal("프로젝트를 불러오는 중…"));
         setError(null);
         pendingListRequestId = forceRefresh
                 ? UiClientNetworking.requestInvestRefresh()
@@ -463,7 +463,7 @@ public final class InvestScreen extends BaseGameScreen {
         if (!payload.success()) {
             String errorMessage = payload.error() != null && !payload.error().isBlank()
                     ? payload.error()
-                    : "Failed to load stocks.";
+                    : "프로젝트 목록을 불러오지 못했습니다.";
             setError(errorMessage);
             stocks.clear();
             selectedStock = null;
@@ -482,7 +482,7 @@ public final class InvestScreen extends BaseGameScreen {
             refreshListEntries();
             restoreSelection(previousSelectedId);
         } catch (Exception ex) {
-            setError("Failed to load stocks.");
+            setError("프로젝트 목록을 불러오지 못했습니다.");
             stocks.clear();
             selectedStock = null;
             detailReady = false;
@@ -503,7 +503,7 @@ public final class InvestScreen extends BaseGameScreen {
             detailReady = false;
             String errorMessage = payload.error() != null && !payload.error().isBlank()
                     ? payload.error()
-                    : "Failed to load stock.";
+                    : "프로젝트를 불러오지 못했습니다.";
             setError(errorMessage);
             updateActionButtons();
             return;
@@ -521,7 +521,7 @@ public final class InvestScreen extends BaseGameScreen {
             updateSelectionByStockId(selectedStock.stockId());
         } catch (Exception ex) {
             detailReady = false;
-            setError("Failed to load stock.");
+            setError("프로젝트를 불러오지 못했습니다.");
         }
 
         updateActionButtons();
@@ -561,8 +561,8 @@ public final class InvestScreen extends BaseGameScreen {
             }
 
             String sideMessage = "sell".equalsIgnoreCase(result.side())
-                    ? "Sold " + result.quantity() + " shares"
-                    : "Bought " + result.quantity() + " shares";
+                    ? "판매 완료 " + result.quantity() + " shares"
+                    : "구매 완료 " + result.quantity() + " shares";
             statusMessage = sideMessage;
             setError(null);
 
@@ -596,7 +596,7 @@ public final class InvestScreen extends BaseGameScreen {
         if (stockListPanel == null || stocks.isEmpty()) {
             selectedStock = null;
             detailReady = false;
-            setEmpty(Component.literal("No stocks available."));
+            setEmpty(Component.literal("프로젝트가 없습니다."));
             return;
         }
 
@@ -670,13 +670,13 @@ public final class InvestScreen extends BaseGameScreen {
         try {
             int quantity = Integer.parseInt(raw);
             if (quantity <= 0) {
-                inputError = "Quantity must be greater than 0.";
+                inputError = "수량은 1 이상이어야 합니다.";
                 return null;
             }
             inputError = null;
             return quantity;
         } catch (NumberFormatException ex) {
-            inputError = "Quantity must be numeric.";
+            inputError = "수량에 숫자를 입력하세요.";
             return null;
         }
     }
@@ -706,12 +706,12 @@ public final class InvestScreen extends BaseGameScreen {
         }
         String normalized = rawError == null ? "" : rawError.toLowerCase();
         if (normalized.contains("balance")) {
-            return "Not enough balance";
+            return "잔액 부족";
         }
         if (normalized.contains("quantity") || normalized.contains("share") || normalized.contains("holding")) {
-            return "Not enough shares";
+            return "보유량 부족";
         }
-        return isBuyLike ? "Not enough balance" : "Not enough shares";
+        return isBuyLike ? "잔액 부족" : "보유량 부족";
     }
 
     private String formatAmount(long value) {

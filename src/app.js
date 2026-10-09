@@ -1,5 +1,9 @@
 import "dotenv/config";
 import express from "express";
+import pool from "./db/pool.js";
+import adminOperationsRoutes from "./modules/admin/admin.operations.routes.js";
+import {requireIntegrationToken} from "./modules/integration/integration.routes.js";
+import {loadEconomySettings} from "./modules/economy/economy.settings.js";
 import integrationRoutes from "./modules/integration/integration.routes.js";
 import { startIntegrationAudit } from "./services/integrationAudit.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
@@ -24,10 +28,15 @@ app.use(express.json());
 app.use("/integration", integrationRoutes);
 
 // 간단한 상태 확인용 엔드포인트
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
+app.get("/health", async (_req,res) => {try {await pool.query("SELECT 1");res.json({status:"ok"});}catch {res.status(503).json({status:"database_unavailable"});}});
+app.use(requireIntegrationToken);
+app.use("/admin/manage",adminOperationsRoutes);
 
+app.post('/players/sync',async(req,res)=>{
+ const {playerId,username}=req.body??{};
+ if(typeof playerId!=='string'||!(/^[0-9a-f-]{36}$/i).test(playerId)||typeof username!=='string'||!(/^[A-Za-z0-9_]{1,16}$/).test(username))return res.status(400).json({message:'Invalid player identity'});
+ const client=await pool.connect();try{await client.query('BEGIN');await client.query('UPDATE players SET username=NULL WHERE username=$1 AND id<>$2',[username,playerId]);await client.query('INSERT INTO players(id,username) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username',[playerId,username]);await client.query('COMMIT');res.json({playerId,username});}catch(e){await client.query('ROLLBACK');res.status(503).json({message:'Player sync unavailable'});}finally{client.release();}
+});
 app.use("/wallet", walletRoutes);
 app.use("/shop", shopRoutes);
 app.use("/events", eventRoutes);
@@ -58,6 +67,7 @@ if (shopReplenisher.started) {
   );
 }
 
+await loadEconomySettings();
 const server = app.listen(port, () => {
   console.log(`[app] wallet api server listening on port ${port}`);
 });

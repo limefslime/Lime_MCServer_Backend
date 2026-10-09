@@ -8,7 +8,7 @@ import net.minecraft.network.chat.Component;
 public final class RegionTabView implements HubTabView {
     @Override
     public Component menuLabel() {
-        return Component.literal("Region");
+        return Component.literal("구역");
     }
 
     @Override

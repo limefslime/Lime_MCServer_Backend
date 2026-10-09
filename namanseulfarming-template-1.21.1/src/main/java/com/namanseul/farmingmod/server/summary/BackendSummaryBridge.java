@@ -36,7 +36,7 @@ public final class BackendSummaryBridge {
         String normalizedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         URI uri = URI.create(normalizedBase + "/ops/summary");
 
-        HttpRequest request = HttpRequest.newBuilder(uri)
+        HttpRequest request = com.namanseul.farmingmod.server.admin.BackendAuthorization.authorize(HttpRequest.newBuilder(uri))
                 .GET()
                 .timeout(Duration.ofMillis(Config.backendTimeoutMs()))
                 .build();

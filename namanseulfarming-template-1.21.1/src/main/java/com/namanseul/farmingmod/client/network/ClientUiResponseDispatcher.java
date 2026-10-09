@@ -30,6 +30,10 @@ public final class ClientUiResponseDispatcher {
             }
 
             switch (payload.screenType()) {
+                case ADMIN -> {
+                    if(payload.action()==UiAction.OPEN)minecraft.setScreen(new com.namanseul.farmingmod.client.ui.screen.AdminScreen());
+                    else if(minecraft.screen instanceof com.namanseul.farmingmod.client.ui.screen.AdminScreen screen)screen.handleServerResponse(payload);
+                }
                 case HUB -> handleHub(payload, minecraft);
                 case SHOP -> handleShop(payload, minecraft);
                 case MAIL -> handleMail(payload, minecraft);
@@ -67,6 +71,7 @@ public final class ClientUiResponseDispatcher {
             return;
         }
 
+        if(minecraft.screen instanceof com.namanseul.farmingmod.client.ui.screen.ListingRegistrationScreen registration){registration.handleServerResponse(payload);return;}
         if (minecraft.screen instanceof ShopScreen shopScreen) {
             shopScreen.handleServerResponse(payload);
             return;
@@ -97,17 +102,17 @@ public final class ClientUiResponseDispatcher {
 
     private static void handleInvest(UiResponsePayload payload, Minecraft minecraft) {
         if (payload.action() == UiAction.OPEN) {
-            InvestScreen.openStandalone();
+            com.namanseul.farmingmod.client.ui.screen.ProjectScreen.openStandalone();
             return;
         }
 
-        if (minecraft.screen instanceof InvestScreen investScreen) {
+        if (minecraft.screen instanceof com.namanseul.farmingmod.client.ui.screen.ProjectScreen investScreen) {
             investScreen.handleServerResponse(payload);
             return;
         }
 
         if (shouldAutoOpenJsonScreen(payload)) {
-            InvestScreen autoOpened = InvestScreen.openStandalone();
+            com.namanseul.farmingmod.client.ui.screen.ProjectScreen autoOpened = com.namanseul.farmingmod.client.ui.screen.ProjectScreen.openStandalone();
             autoOpened.handleServerResponse(payload);
         }
     }

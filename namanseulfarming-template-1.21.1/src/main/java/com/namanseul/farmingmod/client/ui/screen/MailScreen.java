@@ -322,7 +322,7 @@ public final class MailScreen extends BaseGameScreen {
                 var data = com.google.gson.JsonParser.parseString(payload.dataJson()).getAsJsonObject();
                 if (data.has("pending") && data.get("pending").getAsBoolean()) {
                     claimLoading = true;
-                    statusMessage = "Mail claim queued. Waiting for confirmation or inventory space.";
+                    statusMessage = "우편 수령 확인 또는 인벤토리 공간을 기다리는 중입니다.";
                     setError(null);
                     updateActionButtons();
                     return;
@@ -335,7 +335,7 @@ public final class MailScreen extends BaseGameScreen {
         if (!payload.success()) {
             setError(payload.error() == null ? "mail claim failed" : payload.error());
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal(payload.error() == null ? "Mail claim failed." : payload.error())));
+                    Component.literal(payload.error() == null ? "우편을 수령하지 못했습니다." : payload.error())));
             updateActionButtons();
             return;
         }
@@ -363,7 +363,7 @@ public final class MailScreen extends BaseGameScreen {
         } catch (Exception ex) {
             setError("failed to parse mail claim response");
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
-                    Component.literal("Failed to parse claim result")));
+                    Component.literal("수령 결과를 확인하지 못했습니다.")));
         }
         updateActionButtons();
     }

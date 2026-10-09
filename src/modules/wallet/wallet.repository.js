@@ -1,3 +1,4 @@
+import {economyRules} from "../economy/economy.settings.js";
 import pool from "../../db/pool.js";
 
 function getExecutor(executor) {
@@ -48,12 +49,13 @@ export async function addBalance(playerId, amount, executor) {
     UPDATE wallets
     SET balance = balance + $2,
         updated_at = NOW()
-    WHERE player_id = $1
+    WHERE player_id = $1 AND balance::bigint+$2 <= $3
     RETURNING player_id, balance
     `,
-    [playerId, amount]
+    [playerId, amount,economyRules().walletLimit]
   );
-  return result.rows[0] ?? null;
+  if(!result.rows.length)throw Object.assign(new Error("wallet balance limit exceeded"),{code:"22003",status:409});
+  return result.rows[0];
 }
 
 /**

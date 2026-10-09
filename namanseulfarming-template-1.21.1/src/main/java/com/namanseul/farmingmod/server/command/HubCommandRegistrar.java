@@ -16,6 +16,10 @@ public final class HubCommandRegistrar {
     private HubCommandRegistrar() {}
 
     public static void onRegisterCommands(RegisterCommandsEvent event) {
+        for(String name:new String[]{"economyadmin","경제관리"})event.getDispatcher().register(Commands.literal(name).requires(source->source.hasPermission(2)).executes(ctx->{
+            if(!(ctx.getSource().getEntity() instanceof ServerPlayer player))return 0;
+            PacketDistributor.sendToPlayer(player,new UiResponsePayload(UUID.randomUUID().toString(),true,com.namanseul.farmingmod.network.UiScreenType.ADMIN,com.namanseul.farmingmod.network.UiAction.OPEN,null,null,null));return 1;
+        }));
         event.getDispatcher().register(
                 Commands.literal("hub")
                         .requires(source -> source.hasPermission(0))

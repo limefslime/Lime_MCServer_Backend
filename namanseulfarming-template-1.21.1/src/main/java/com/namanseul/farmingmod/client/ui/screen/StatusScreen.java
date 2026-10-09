@@ -121,7 +121,7 @@ public final class StatusScreen extends BaseTabbedScreen {
 
         if (!payload.success()) {
             setError(payload.error() == null || payload.error().isBlank()
-                    ? "Unable to load status overview."
+                    ? "현황을 불러오지 못했습니다."
                     : payload.error());
             updateActionButtons();
             return;
@@ -132,7 +132,7 @@ public final class StatusScreen extends BaseTabbedScreen {
             setError(null);
             updateTabContent();
         } catch (Exception ex) {
-            setError("Unable to read status overview data.");
+            setError("현황 정보를 확인하지 못했습니다.");
         }
 
         updateActionButtons();

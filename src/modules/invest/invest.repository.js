@@ -70,6 +70,7 @@ export async function getProjectById(projectId, executor) {
       ends_at
     FROM invest_projects
     WHERE id = $1
+    ${executor ? "FOR UPDATE" : ""}
     `,
     [projectId]
   );

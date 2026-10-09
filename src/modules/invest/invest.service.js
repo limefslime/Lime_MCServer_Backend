@@ -1,7 +1,9 @@
-﻿import { withTransaction } from "../../db/pool.js";
+﻿import {assertEconomyAvailable} from "../economy/economy.settings.js";
+import { withTransaction } from "../../db/pool.js";
 import { createProjectCompletionMail } from "../mail/mail.service.js";
 import {
   activateProjectEffectByProjectId,
+  distributeCompletedProjectRewards,
   getProjectCompletionStatus,
 } from "../project-completion/projectCompletion.service.js";
 import {
@@ -398,13 +400,23 @@ export async function getProjectDetail(projectId) {
   return buildProjectDetailResult(row, contributors);
 }
 
-export async function investToProject(projectId, { playerId, amount }) {
+export async function investToProject(projectId, { playerId, amount,requestId },transaction=withTransaction) {
+  if(requestId!==undefined){validateUuid(requestId,"requestId");requestId=requestId.toLowerCase();}
+  playerId=playerId.toLowerCase();projectId=projectId.toLowerCase();
   validateProjectId(projectId);
   validatePlayerId(playerId);
   validateAmount(amount);
 
-  return withTransaction(async (client) => {
-    await getActiveProjectOrThrow(projectId, client);
+  return transaction(async (client) => {
+    const project=await getProjectOrThrow(projectId,client);
+    if(requestId!==undefined){
+      const {rows:[receipt]}=await client.query('SELECT * FROM investment_receipts WHERE player_id=$1 AND request_id=$2',[playerId,requestId]);
+      if(receipt){if(receipt.project_id!==projectId||receipt.amount!==amount)throw new InvestServiceError(investErrorCode.INVALID_INPUT,'requestId reused for another investment');return {...receipt.result,replayed:true};}
+    }
+    assertProjectStillInvestable(project);
+    if(project.ends_at&&new Date(project.ends_at)<=new Date())throw new InvestServiceError(investErrorCode.PROJECT_NOT_ACTIVE,'project has ended');
+    if(amount>project.target_amount-project.current_amount)throw new InvestServiceError(investErrorCode.INVALID_INPUT,'amount exceeds remaining target');
+    await assertEconomyAvailable(client,playerId);
     await ensureInvestorWalletReady(playerId, client);
     await subtractWalletOrThrow(playerId, amount, client);
 
@@ -472,11 +484,13 @@ export async function investToProject(projectId, { playerId, amount }) {
       amount,
       projectTotal,
     });
-    return {
-      ...investResult,
-      progress,
-      completion,
-    };
+    const result={...investResult,progress,completion,playerId,projectId,requestId,amount};
+    if(completion.reachedTarget)await distributeCompletedProjectRewards(projectId,client);
+    if(requestId!==undefined){
+      await client.query('INSERT INTO investment_receipts(player_id,request_id,project_id,amount,result) VALUES($1,$2,$3,$4,$5)',[playerId,requestId,projectId,amount,result]);
+      await client.query('INSERT INTO integration_audit_outbox(payload) VALUES($1)',[{event:'project_investment',...result}]);
+    }
+    return result;
   });
 }
 

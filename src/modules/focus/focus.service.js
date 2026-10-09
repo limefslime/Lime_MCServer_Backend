@@ -5,7 +5,7 @@
 } from "./focus.repository.js";
 
 const FOCUS_STATUS_ACTIVE = "active";
-const FOCUS_CATEGORIES = ["mining", "farming", "fishing", "misc"];
+const FOCUS_CATEGORIES = ["mining", "farming", "fishing"];
 const FOCUS_CATEGORY_SET = new Set(FOCUS_CATEGORIES);
 const LEGACY_FOCUS_REGION_MAP = {
   agri: "farming",
@@ -156,7 +156,8 @@ async function getCurrentFocusStateOrCreateDefault() {
 }
 
 export async function getCurrentFocus() {
-  const state = await getCurrentFocusStateOrCreateDefault();
+  const state = await findCurrentFocusState();
+  if(!state)return {focusRegion:null,status:"inactive",recentSellTotals:await loadRecentSellTotals(),sourceCategory:null};
   const recentSellTotals = await loadRecentSellTotals();
 
   return {

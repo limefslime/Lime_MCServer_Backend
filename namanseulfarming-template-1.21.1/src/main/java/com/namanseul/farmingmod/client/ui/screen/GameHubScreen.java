@@ -21,8 +21,8 @@ public final class GameHubScreen extends BaseGameScreen {
     private static final String MENU_REGION = "region";
 
     private static final int MENU_BUTTON_HEIGHT = 22;
-    private static final int MENU_BUTTON_GAP = 8;
-    private static final String HUB_MENU_ERROR_MESSAGE = "Unable to open hub menu.";
+    private static final int MENU_BUTTON_GAP = 5;
+    private static final String HUB_MENU_ERROR_MESSAGE = "메뉴를 열지 못했습니다.";
 
     private final Map<String, HubTabView> menuViews = new LinkedHashMap<>();
     private final Map<String, Button> menuButtons = new LinkedHashMap<>();
@@ -71,6 +71,10 @@ public final class GameHubScreen extends BaseGameScreen {
             return;
         }
 
+        menuViews.put("admin", new HubTabView(){
+            @Override public Component menuLabel(){return Component.literal("경제 관리");}
+            @Override public void openFromHub(GameHubScreen hub){com.namanseul.farmingmod.client.network.UiClientNetworking.send(com.namanseul.farmingmod.network.UiScreenType.ADMIN,com.namanseul.farmingmod.network.UiAction.OPEN,null);}
+        });
         menuViews.put(MENU_SHOP, new ShopTabView());
         menuViews.put(MENU_MAIL, new MailTabView());
         menuViews.put(MENU_INVEST, new InvestTabView());
@@ -102,7 +106,7 @@ public final class GameHubScreen extends BaseGameScreen {
 
     private void recalcLayout() {
         frameWidth = Math.min(340, width - 20);
-        frameHeight = Math.min(260, height - 24);
+        frameHeight = Math.min(300, height - 24);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 

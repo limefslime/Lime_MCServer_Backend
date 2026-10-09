@@ -47,48 +47,49 @@ public final class ShopDetailPanelView {
     ) {
         List<Component> lines = new ArrayList<>();
         if (item == null) {
-            lines.add(Component.literal("Select an item."));
+            lines.add(Component.literal("상품을 선택하세요."));
             return lines;
         }
 
         String itemName = (item.itemName() == null || item.itemName().isBlank()) ? item.itemId() : item.itemName();
         lines.add(Component.literal(itemName));
-        lines.add(Component.literal("Buy: " + item.currentBuyPrice()));
-        lines.add(Component.literal("Sell: " + item.currentSellPrice()));
+        lines.add(Component.literal("구매: " + item.currentBuyPrice()));
+        lines.add(Component.literal("판매: " + item.currentSellPrice()));
 
         if (buyPreview != null) {
-            lines.add(Component.literal("Buy x" + buyPreview.quantity() + ": " + buyPreview.netTotalPrice()));
+            lines.add(Component.literal("구매 수량 " + buyPreview.quantity() + ": " + buyPreview.netTotalPrice()));
             if (buyPreview.feeAmount() > 0) {
-                lines.add(Component.literal("Buy Fee: " + buyPreview.feeAmount()));
+                lines.add(Component.literal("구매 수수료: " + buyPreview.feeAmount()));
             }
             if (Boolean.FALSE.equals(buyPreview.canAfford())) {
-                lines.add(Component.literal("Not enough balance."));
+                lines.add(Component.literal("잔액이 부족합니다."));
             }
         }
 
         if (sellPreview != null) {
-            lines.add(Component.literal("Sell x" + sellPreview.quantity() + ": " + sellPreview.netTotalPrice()));
+            lines.add(Component.literal("판매 수량 " + sellPreview.quantity() + ": " + sellPreview.netTotalPrice()));
             if (sellPreview.feeAmount() > 0) {
-                lines.add(Component.literal("Sell Fee: " + sellPreview.feeAmount()));
+                lines.add(Component.literal("판매 수수료: " + sellPreview.feeAmount()));
             }
         }
 
         if (buyPreview == null && sellPreview == null) {
             lines.add(Component.literal(previewLoading
-                    ? "Checking quote..."
-                    : "Set quantity for quote."));
+                    ? "견적을 확인하는 중…"
+                    : "견적을 볼 수량을 입력하세요."));
         }
 
         int stock = Math.max(0, item.stockQuantity());
-        lines.add(Component.literal("Stock: " + stock));
+        lines.add(Component.literal("재고: " + stock));
         if (item.playerListed()) {
-            lines.add(Component.literal("Listed by you: " + Math.max(1, item.listingQuantity())));
+            lines.add(Component.literal("내 등록 수량: " + Math.max(1, item.listingQuantity())));
+            lines.add(Component.literal("내 등록 개당 가격: " + item.listingUnitPrice()));
         }
 
         if (trade != null && item.itemId().equals(trade.itemId())) {
-            String action = "buy".equalsIgnoreCase(trade.transactionType()) ? "Bought" : "Sold";
-            lines.add(Component.literal("Last: " + action + " x" + trade.quantity()));
-            lines.add(Component.literal("Last Net: " + trade.netTotalPrice()));
+            String action = "buy".equalsIgnoreCase(trade.transactionType()) ? "구매 완료" : "판매 완료";
+            lines.add(Component.literal("최근 기록: " + action + " x" + trade.quantity()));
+            lines.add(Component.literal("최근 정산액: " + trade.netTotalPrice()));
         }
 
         return lines;

@@ -1,3 +1,4 @@
+import { settingValue,economyRules,assertEconomyAvailable } from '../economy/economy.settings.js';
 import { readFile } from 'node:fs/promises';
 import { withTransaction } from '../../db/pool.js';
 import { ensurePlayerExists, ensureWalletExists, insertLedgerEntry } from '../wallet/wallet.repository.js';
@@ -8,9 +9,9 @@ function identity(raw) {
   if (typeof raw !== 'string' || !UUID.test(raw)) throw new RewardError('invalid player/request UUID');
   return raw.toLowerCase();
 }
-export async function deliveryPolicies() {
+export async function deliveryPolicies(db) {
   const path = process.env.DELIVERY_POLICY_PATH || new URL('../../../config/delivery-contracts.json', import.meta.url);
-  const policies = JSON.parse(await readFile(path, 'utf8'));
+  const policies = await settingValue('deliveries',JSON.parse(await readFile(path, 'utf8')),db);
   if (!Array.isArray(policies) || policies.length > 30) throw new RewardError('invalid delivery policy', 503);
   const seen = new Set();
   for (const p of policies) {
@@ -38,9 +39,10 @@ function nextTime(row) {
   return new Date(new Date(row.completed_at).getTime() + row.definition.cooldownSeconds * 1000);
 }
 export async function listDeliveries(raw, transaction = withTransaction) {
-  const playerId = identity(raw); const policies = await deliveryPolicies();
+  const playerId = identity(raw);
   return transaction(async client => {
     await lock(client, playerId);
+    const policies = await deliveryPolicies(client);
     const { rows } = await client.query('SELECT * FROM delivery_contracts WHERE player_id=$1 ORDER BY accepted_at DESC', [playerId]);
     const { rows: [clock] } = await client.query('SELECT clock_timestamp() AS now');
     const active = rows.filter(r => r.status === 'active');
@@ -48,7 +50,7 @@ export async function listDeliveries(raw, transaction = withTransaction) {
       const previous = rows.find(r => r.template_id === p.id);
       const eligibleAt = previous?.status === 'completed' ? nextTime(previous) : null;
       const reason = active.some(r => r.template_id === p.id) ? 'already_active'
-        : active.length >= 3 ? 'active_limit' : eligibleAt && eligibleAt > clock.now ? 'cooldown' : null;
+        : active.length >= economyRules().deliveryActiveLimit ? 'active_limit' : eligibleAt && eligibleAt > clock.now ? 'cooldown' : null;
       return { ...p, canAccept: !reason, reason, nextEligibleAt: eligibleAt };
     });
     return { available, active: active.map(view), completed: rows.filter(r => r.status === 'completed').slice(0,30).map(view) };
@@ -80,17 +82,18 @@ async function save(client, input, result) {
 export async function acceptDelivery(raw, transaction = withTransaction) {
   const input = {playerId:identity(raw?.playerId),requestId:identity(raw?.requestId),operation:'accept',target:raw?.templateId,itemId:'',quantity:0};
   if (typeof input.target !== 'string' || !/^[a-z0-9_-]{1,64}$/.test(input.target)) throw new RewardError('invalid templateId');
-  const policies = await deliveryPolicies();
   return transaction(async client => {
     await lock(client,input.playerId);
     const receipt = await previous(client,input); if (receipt) return receipt;
+    await assertEconomyAvailable(client,input.playerId);
     const base = {...input, accepted:false};
     const reject = (code,message) => save(client,input,{...base,code,message});
+    const policies = await deliveryPolicies(client);
     const policy = policies.find(p => p.id === input.target);
     if (!policy) return reject('NOT_FOUND','의뢰를 찾을 수 없습니다.');
     const {rows} = await client.query('SELECT * FROM delivery_contracts WHERE player_id=$1 ORDER BY accepted_at DESC', [input.playerId]);
     if (rows.some(r => r.template_id === input.target && r.status === 'active')) return reject('ACTIVE','이미 수락한 의뢰입니다.');
-    if (rows.filter(r => r.status === 'active').length >= 3) return reject('LIMIT','수락 가능한 의뢰는 최대 3개입니다.');
+    if (rows.filter(r => r.status === 'active').length >= economyRules().deliveryActiveLimit) return reject('LIMIT',`수락 가능한 의뢰는 최대 ${economyRules().deliveryActiveLimit}개입니다.`);
     const last = rows.find(r => r.template_id === input.target && r.status === 'completed');
     const {rows:[clock]} = await client.query('SELECT clock_timestamp() AS now');
     if (last && nextTime(last) > clock.now) return reject('COOLDOWN','같은 의뢰는 완료 후 대기 시간이 필요합니다.');
@@ -117,7 +120,7 @@ export async function submitDelivery(raw, transaction = withTransaction) {
     let reward = 0, balance = null;
     if (complete) {
       reward = row.definition.reward;
-      const {rows:[wallet]} = await client.query('UPDATE wallets SET balance=balance+$2,updated_at=NOW() WHERE player_id=$1 AND balance::bigint+$2<=2147483647 RETURNING balance',[input.playerId,reward]);
+      const {rows:[wallet]} = await client.query('UPDATE wallets SET balance=balance+$2,updated_at=NOW() WHERE player_id=$1 AND balance::bigint+$2<=$3 RETURNING balance',[input.playerId,reward,economyRules().walletLimit]);
       if (!wallet) return reject('BALANCE_LIMIT','지갑 잔액 한도에 도달했습니다.');
       balance = Number(wallet.balance);
       await insertLedgerEntry({playerId:input.playerId,type:'add',amount:reward,reason:'quest_reward'},client);

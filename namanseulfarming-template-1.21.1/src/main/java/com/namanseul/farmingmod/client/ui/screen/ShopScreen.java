@@ -29,11 +29,11 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 public final class ShopScreen extends BaseGameScreen {
-    private static final String MSG_SELECT_ITEM = "Select an item first.";
-    private static final String MSG_INVALID_QUANTITY = "Enter a quantity of 1 or more.";
-    private static final String MSG_PREVIEW_PENDING = "Price check is in progress.";
-    private static final String MSG_SELECT_LISTED_ITEM = "Select your listed item first.";
-    private static final String MSG_INVALID_INVENTORY_ITEM = "Could not read the selected inventory item.";
+    private static final String MSG_SELECT_ITEM = "먼저 상품을 선택하세요.";
+    private static final String MSG_INVALID_QUANTITY = "1 이상의 수량을 입력하세요.";
+    private static final String MSG_PREVIEW_PENDING = "가격을 확인하는 중입니다.";
+    private static final String MSG_SELECT_LISTED_ITEM = "먼저 내가 등록한 상품을 선택하세요.";
+    private static final String MSG_INVALID_INVENTORY_ITEM = "선택한 아이템을 확인하지 못했습니다.";
 
     private final Screen returnScreen;
     private final List<ShopItemViewData> items = new ArrayList<>();
@@ -457,7 +457,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = true;
         setError(null);
-        statusMessage = "Registering item...";
+        statusMessage = "아이템을 등록하는 중…";
         pendingRegisterRequestId = UiClientNetworking.requestShopRegister(
                 choice.itemKey(),
                 choice.stack().getDisplayName().getString(),
@@ -478,7 +478,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         listingActionLoading = true;
         setError(null);
-        statusMessage = "Canceling listing...";
+        statusMessage = "등록을 취소하는 중…";
         pendingCancelSellRequestId = UiClientNetworking.requestShopCancelSell(selectedItem.itemId());
         updateActionButtons();
     }
@@ -528,7 +528,7 @@ public final class ShopScreen extends BaseGameScreen {
         setMainWidgetsVisible(false);
         inventoryPickerVisible = true;
         if (inventoryChoices.isEmpty()) {
-            showActionHint("No items available in your inventory.");
+            showActionHint("인벤토리에 등록할 아이템이 없습니다.");
         }
         updateActionButtons();
     }
@@ -606,10 +606,14 @@ public final class ShopScreen extends BaseGameScreen {
 
             String itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
             inventoryChoices.add(new InventoryChoice(slot, stack.copy(), itemKey));
-            entryTexts.add(Component.literal(stack.getDisplayName().getString() + " x" + stack.getCount() + " (" + itemKey + ")"));
+            entryTexts.add(Component.literal(stack.getHoverName().getString() + " x" + stack.getCount()));
         }
 
         inventoryListPanel.setEntries(entryTexts);
+        inventoryListPanel.setRowRenderer((graphics,font,index,entry,x,y,w,h,selected)->{
+            ItemStack stack=inventoryChoices.get(index).stack();graphics.renderItem(stack,x+2,y+1);
+            graphics.drawString(font,font.plainSubstrByWidth(stack.getHoverName().getString()+" x"+stack.getCount(),w-24),x+22,y+5,0xffffff);
+        });
         if (!entryTexts.isEmpty()) {
             inventoryListPanel.setSelectedIndex(0);
         }
@@ -627,7 +631,7 @@ public final class ShopScreen extends BaseGameScreen {
             quantityInput.setValue(Integer.toString(Math.max(1, choice.stack().getCount())));
         }
         closeInventoryPicker();
-        requestRegisterItem(choice);
+        minecraft.setScreen(new ListingRegistrationScreen(this,choice.slot(),choice.stack(),choice.itemKey()));
     }
 
     private boolean selectShopItemByInventoryKey(String itemKey) {
@@ -652,26 +656,26 @@ public final class ShopScreen extends BaseGameScreen {
     @Nullable
     private Integer validatedQuantity() {
         if (quantityInput == null) {
-            quantityError = "Quantity input is unavailable.";
+            quantityError = "수량 입력을 사용할 수 없습니다.";
             return null;
         }
 
         String raw = quantityInput.getValue();
         if (raw == null || raw.isBlank()) {
-            quantityError = "Enter quantity.";
+            quantityError = "수량을 입력하세요.";
             return null;
         }
 
         try {
             int quantity = Integer.parseInt(raw);
             if (quantity <= 0) {
-                quantityError = "Quantity must be 1 or more.";
+                quantityError = "수량은 1 이상이어야 합니다.";
                 return null;
             }
             quantityError = null;
             return quantity;
         } catch (NumberFormatException ex) {
-            quantityError = "Quantity must be a number.";
+            quantityError = "수량에 숫자를 입력하세요.";
             return null;
         }
     }
@@ -705,7 +709,7 @@ public final class ShopScreen extends BaseGameScreen {
             items.clear();
             selectedItem = null;
             clearPreviews();
-            showFailure("Could not load shop items.");
+            showFailure("상품 목록을 불러오지 못했습니다.");
             updateListEntries();
             updateActionButtons();
             return;
@@ -725,7 +729,7 @@ public final class ShopScreen extends BaseGameScreen {
             selectedItem = null;
             clearPreviews();
             updateListEntries();
-            showFailure("Could not read shop items.");
+            showFailure("상품 목록을 확인하지 못했습니다.");
         }
 
         updateActionButtons();
@@ -738,7 +742,7 @@ public final class ShopScreen extends BaseGameScreen {
         pendingDetailRequestId = null;
 
         if (!payload.success()) {
-            showFailure("Could not load selected item.");
+            showFailure("선택한 상품을 불러오지 못했습니다.");
             return;
         }
 
@@ -750,7 +754,7 @@ public final class ShopScreen extends BaseGameScreen {
             updateSelectionByItemId(detail.itemId());
             setError(null);
         } catch (Exception ex) {
-            showFailure("Could not read selected item.");
+            showFailure("선택한 상품을 확인하지 못했습니다.");
         }
     }
 
@@ -768,7 +772,7 @@ public final class ShopScreen extends BaseGameScreen {
         previewLoading = pendingPreviewBuyRequestId != null || pendingPreviewSellRequestId != null;
 
         if (!payload.success()) {
-            showFailure("Could not check price.");
+            showFailure("가격을 확인하지 못했습니다.");
             updateActionButtons();
             return;
         }
@@ -780,15 +784,13 @@ public final class ShopScreen extends BaseGameScreen {
             } else {
                 sellPreview = preview;
             }
-            if (preview.balanceAfterPreview() != null) {
-                BalanceHudState.setBalance(preview.balanceAfterPreview());
-            } else if (preview.balanceBefore() != null) {
+            if (preview.balanceBefore() != null) {
                 BalanceHudState.setBalance(preview.balanceBefore());
             }
             statusMessage = null;
             setError(null);
         } catch (Exception ex) {
-            showFailure("Could not read price quote.");
+            showFailure("견적을 확인하지 못했습니다.");
         }
         updateActionButtons();
     }
@@ -802,7 +804,7 @@ public final class ShopScreen extends BaseGameScreen {
                 var data = com.google.gson.JsonParser.parseString(payload.dataJson()).getAsJsonObject();
                 if (data.has("pending") && data.get("pending").getAsBoolean()) {
                     tradeLoading = true;
-                    statusMessage = "Trade queued. Waiting for confirmation or inventory space.";
+                    statusMessage = "거래 확인 또는 인벤토리 공간을 기다리는 중입니다.";
                     setError(null);
                     updateActionButtons();
                     return;
@@ -814,7 +816,7 @@ public final class ShopScreen extends BaseGameScreen {
 
         if (!payload.success()) {
             showFailure(payload.error() == null || payload.error().isBlank()
-                    ? "Trade confirmation unavailable. Check the queued trade before submitting again." : payload.error());
+                    ? "거래 확인 대기 중입니다. 다시 거래하기 전에 미완료 거래를 확인하세요." : payload.error());
             updateActionButtons();
             return;
         }
@@ -826,11 +828,11 @@ public final class ShopScreen extends BaseGameScreen {
             if (lastTrade.balanceAfter() != null) {
                 BalanceHudState.setBalance(lastTrade.balanceAfter());
             }
-            statusMessage = "buy".equals(transactionType) ? "Purchase completed." : "Sale completed.";
+            statusMessage = "buy".equals(transactionType) ? "구매가 완료되었습니다." : "판매가 완료되었습니다.";
             setError(null);
             requestItemList(true);
         } catch (Exception ex) {
-            showFailure("Trade completed, but confirmation could not be read.");
+            showFailure("거래 결과를 확인하지 못했습니다. 재거래 전 기록을 확인하세요.");
         }
         updateActionButtons();
     }
@@ -857,7 +859,7 @@ public final class ShopScreen extends BaseGameScreen {
                     if (payload.action() == UiAction.SHOP_REGISTER) pendingRegisterRequestId = payload.requestId();
                     else pendingCancelSellRequestId = payload.requestId();
                     listingActionLoading = true;
-                    statusMessage = "Listing updated. Waiting for storage confirmation.";
+                    statusMessage = "등록 정보를 저장하는 중입니다.";
                     setError(null);
                     updateActionButtons();
                     return;
@@ -868,16 +870,16 @@ public final class ShopScreen extends BaseGameScreen {
         listingActionLoading = false;
         if (!payload.success()) {
             showFailure(payload.error() == null || payload.error().isBlank()
-                    ? "Could not update listing." : payload.error());
+                    ? "등록 정보를 변경하지 못했습니다." : payload.error());
             updateActionButtons();
             return;
         }
 
         if (payload.action() == UiAction.SHOP_REGISTER) {
-            statusMessage = "Item listed for sale.";
+            statusMessage = "아이템을 등록했습니다.";
             tryApplyListingFromActionResponse(payload.dataJson());
         } else {
-            statusMessage = "Listing canceled. Original items returned to inventory.";
+            statusMessage = "등록을 취소하고 원본 아이템을 돌려받았습니다.";
         }
         requestItemList(true);
         updateActionButtons();

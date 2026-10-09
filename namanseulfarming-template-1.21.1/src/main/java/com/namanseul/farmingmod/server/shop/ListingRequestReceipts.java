@@ -8,8 +8,10 @@ import java.util.function.Supplier;
 /** Executes a listing mutation once. The caller commits receipt and inventory in the same save. */
 public final class ListingRequestReceipts {
     private ListingRequestReceipts() {}
-    public record Request(String requestId, String action, String itemId, int quantity, int slot) {
+    public record Request(String requestId, String action, String itemId, int quantity, int slot, int unitPrice) {
+        public Request(String requestId,String action,String itemId,int quantity,int slot){this(requestId,action,itemId,quantity,slot,action.equals("register")?1:0);}
         public Request {
+            if(action.equals("register") ? unitPrice<=0 : unitPrice!=0)throw new IllegalArgumentException("Invalid listing price");
             if (!UUID.fromString(requestId).toString().equals(requestId)) throw new IllegalArgumentException("invalid listing request UUID");
             if (!action.equals("register") && !action.equals("cancel")) throw new IllegalArgumentException("invalid listing action");
             if (itemId == null || itemId.isBlank()) throw new IllegalArgumentException("itemId is required");
