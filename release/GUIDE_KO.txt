@@ -1,27 +1,27 @@
-﻿경제 관리 업데이트 1.1.0 — Minecraft 1.21.1 / NeoForge 21.1.244
+﻿Lime Colony Economy / Namanseul Farming 1.1.1
+Minecraft 1.21.1 · NeoForge 21.1.244
 
-서버와 모든 클라이언트에 같은 JAR를 설치해야 합니다.
+ZIP을 전부 압축 해제하세요.
 
-서버 업데이트(기존 mc-ubuntu 컨테이너):
-1. 이 ZIP을 Windows 폴더에 전부 압축 해제합니다.
-2. 해당 폴더에서 PowerShell을 엽니다.
-3. powershell -ExecutionPolicy Bypass -File .\Update-Server.ps1
+서버·백엔드 업데이트: Docker Desktop 실행 → Update-Server.cmd 더블클릭
+내 클라이언트: Minecraft 종료 → Update-Client.cmd 더블클릭
+.cmd 파일은 각각 PowerShell(.ps1)을 실행하며 마지막에 창을 남깁니다.
+서버 업데이트는 저장 종료·백업 후 설치와 재시작을 수행하므로 서버 이용자가 나간 뒤 실행하세요.
+기존 .env·연결 토큰·정책 설정을 보존합니다. 백업은 /srv/mc/backups 아래에 생성됩니다.
 
-스크립트는 현재 Minecraft와 백엔드를 저장 종료하고, 기존 DB·백엔드·원본 모드·플레이어 데이터를 /srv/mc/backups 아래에 백업합니다. 기존 .env·연결 토큰·정책 설정은 보존합니다. 업데이트 설치와 스키마 023 적용 뒤 백엔드와 Minecraft를 시작합니다. 사용자 환경에서 이 스크립트를 직접 실행해 검증한 것은 아닙니다. 실패하면 출력된 단계와 백업 경로를 확인하세요.
-서버 시작 확인: docker exec mc-ubuntu tail -n 30 /srv/mc/server/admin-update-launch.log
+친구: 기존 namanseulfarming JAR만 제거하고 namanseulfarming-1.1.1.jar를 mods에 넣으세요.
+모든 클라이언트와 서버가 같은 새 모드 파일을 써야 합니다 (연결 프로토콜 13).
+모드팩 전체 ZIP은 CurseForge 가져오기용입니다.
 
-내 클라이언트 업데이트:
-Minecraft를 종료하고 같은 폴더에서
-powershell -ExecutionPolicy Bypass -File .\Update-Client.ps1
-기본 대상: 사용자 폴더\curseforge\minecraft\Instances\Lime Colony Economy\mods
-다른 경로는 -ModsPath '실제 mods 경로'를 붙입니다.
+OP 2 이상: /경제관리. OP가 아니면 허브의 경제 관리 버튼은 보이지 않습니다.
+위쪽 분류와 왼쪽 기능을 클릭해서 바로 이동합니다. 목록과 입력란은 휠 또는 페이지 버튼으로 이동합니다.
+신규 보상·납품·프로젝트·이벤트 ID는 비워 두면 자동 생성됩니다.
+기존 ID는 돋보기로 검색 → 행 선택 → 선택 확인. 신규 버튼은 기존 ID를 지웁니다.
+시각·대상 플레이어·UUID를 확인할 수 있고 긴 ID·항목명은 마우스를 올려 확인합니다.
 
-친구: 기존 namanseulfarming JAR를 제거하고 namanseulfarming-1.1.0.jar를 mods에 넣으세요. 새 모드팩 전체 ZIP은 CurseForge에서 가져오기용입니다.
+수정 내역은 UI_IMPROVEMENTS_1.1.1.md에 있습니다.
+자동 검증: 백엔드 테스트 51개, Java 보호·표시 시험 7종, 모드 Java 컴파일·JAR 생성 통과. 운영 의존성 취약점 0개.
+실제 Minecraft 화면 클릭·OP 전환·해상도별 표시·사용자 Docker 설치 실행은 이 환경에서 검증하지 않았습니다.
+ADMIN_TEST_CHECKLIST.md의 실제 게임 항목으로 확인하세요.
 
-게임: 한국어 언어 선택 → OP 2 이상으로 /경제관리 (또는 /economyadmin). 돈 지급은 지갑 분류, 아이템 복구는 우편 분류에서 처리합니다. /hub에도 경제 관리 버튼이 있습니다. 일반 플레이어는 관리자 권한 검사를 통과하지 못합니다.
-
-상품 등록: 인벤토리에서 선택 → 수량·개당 가격 입력. 상품 아이콘과 긴 이름 툴팁을 표시합니다. 아이템 이름을 새로 번역하지 않았습니다.
-
-검증: Node 자동 테스트 46개, Java 거래 보호 시험, 모드 빌드 통과. 운영 의존성 취약점 0개. 실제 게임 접속·화면 클릭·업데이트 스크립트 실행은 사용 환경에서 확인해야 합니다.
-
-자세한 관리 기능과 복구 범위는 ADMIN_ECONOMY_1.1.0.md, 실제 테스트 목록은 ADMIN_TEST_CHECKLIST.md에 있습니다. 공개 플레이어 간 거래소 구매·정산은 아직 별도 미구현 기능입니다.
+아이템 이름·아이템 ID·UUID는 일괄 번역하지 않습니다. 공개 플레이어 간 거래소 구매·정산은 이번 UI 개선과 별도 미구현 기능입니다.

@@ -31,7 +31,7 @@ public final class DeliveryScreen extends BaseGameScreen {
     private int x,y,w,h,listWidth;
     public DeliveryScreen(Screen parent){super(Component.literal("납품 의뢰"));this.parent=parent;}
     @Override protected void init(){
-        super.init(); w=Math.min(560,width-20);h=Math.min(310,height-24);x=(width-w)/2;y=(height-h)/2;
+        super.init(); w=Math.min(520,width-20);h=Math.min(290,height-24);x=(width-w)/2;y=(height-h)/2;
         listWidth=Math.max(100,(w-28)*38/100);
         initCommonButtons(x+w-4,y+8);initRefreshButton(x+w-4,y+8);
         closeButton.setMessage(Component.literal("뒤로"));

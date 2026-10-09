@@ -53,7 +53,7 @@ public final class StatusViewFormatter {
 
         int rewardsReady = rewardReadyMailCount(data);
         if (rewardsReady > 0) {
-            lines.add(Component.literal("수령 가능한 프로젝트 보상: " + rewardsReady + " mails"));
+            lines.add(Component.literal("수령 가능한 프로젝트 보상: " + rewardsReady + "개 우편"));
         } else {
             lines.add(Component.literal("완료된 프로젝트: " + data.completedProjectCount()));
         }

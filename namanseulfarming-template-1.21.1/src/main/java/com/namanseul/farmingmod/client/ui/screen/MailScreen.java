@@ -259,7 +259,7 @@ public final class MailScreen extends BaseGameScreen {
         if (!payload.success()) {
             mails.clear();
             selectedMail = null;
-            setError(payload.error() == null ? "mail list request failed" : payload.error());
+            setError(payload.error() == null ? "우편 목록을 불러오지 못했습니다." : payload.error());
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
                     Component.translatable("screen.namanseulfarming.mail.banner.list_failed")));
             updateListEntries();
@@ -281,7 +281,7 @@ public final class MailScreen extends BaseGameScreen {
             mails.clear();
             selectedMail = null;
             updateListEntries();
-            setError("failed to parse mail list response");
+            setError("우편 목록을 해석하지 못했습니다.");
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
                     Component.translatable("screen.namanseulfarming.mail.banner.list_failed")));
         }
@@ -297,7 +297,7 @@ public final class MailScreen extends BaseGameScreen {
 
         if (!payload.success()) {
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal(payload.error() == null ? "mail detail request failed" : payload.error())));
+                    Component.literal(payload.error() == null ? "우편 상세를 불러오지 못했습니다." : payload.error())));
             return;
         }
 
@@ -309,7 +309,7 @@ public final class MailScreen extends BaseGameScreen {
             updateSelectionByMailId(detail.id());
         } catch (Exception ex) {
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.WARNING,
-                    Component.literal("failed to parse mail detail")));
+                    Component.literal("우편 상세를 해석하지 못했습니다.")));
         }
     }
 
@@ -333,7 +333,7 @@ public final class MailScreen extends BaseGameScreen {
         claimLoading = false;
 
         if (!payload.success()) {
-            setError(payload.error() == null ? "mail claim failed" : payload.error());
+            setError(payload.error() == null ? "우편을 수령하지 못했습니다." : payload.error());
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
                     Component.literal(payload.error() == null ? "우편을 수령하지 못했습니다." : payload.error())));
             updateActionButtons();
@@ -347,7 +347,7 @@ public final class MailScreen extends BaseGameScreen {
                 BalanceHudState.setBalance(claim.balanceAfter());
             }
             String rewardText = claim.rewardAmount() == null ? "-" : Integer.toString(claim.rewardAmount());
-            statusMessage = "claim success (reward " + rewardText + ")";
+            statusMessage = "수령 완료 (보상 " + rewardText + ")";
             setError(null);
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.INFO,
                     Component.translatable("screen.namanseulfarming.mail.banner.claim_success", rewardText)));
@@ -361,7 +361,7 @@ public final class MailScreen extends BaseGameScreen {
 
             requestMailList(true);
         } catch (Exception ex) {
-            setError("failed to parse mail claim response");
+            setError("우편 수령 결과를 해석하지 못했습니다.");
             setMessageBanner(new UiMessageBanner(UiMessageBanner.MessageType.ERROR,
                     Component.literal("수령 결과를 확인하지 못했습니다.")));
         }
@@ -450,8 +450,8 @@ public final class MailScreen extends BaseGameScreen {
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(560, width - 20);
-        frameHeight = Math.min(360, height - 36);
+        frameWidth = Math.min(520, width - 20);
+        frameHeight = Math.min(330, height - 36);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 

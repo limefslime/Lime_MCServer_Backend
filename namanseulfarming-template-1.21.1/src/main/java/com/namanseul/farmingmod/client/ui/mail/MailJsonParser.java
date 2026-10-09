@@ -141,7 +141,7 @@ public final class MailJsonParser {
         String title = readString(root, "title", "(no title)");
         String message = readString(root, "message", "");
         if (message.isBlank()) {
-            message = "(no message)";
+            message = "(내용 없음)";
         }
 
         boolean claimed = readBoolean(root, "claimed", false)

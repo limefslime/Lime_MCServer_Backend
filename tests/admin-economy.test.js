@@ -42,3 +42,38 @@ test('purchase compensation refunds the charged total exactly once and includes 
  const {buyItem}=await import('../src/modules/shop/shop.service.js');const playerId=randomUUID();await run('wallet_add',{playerId,amount:100});const input={playerId,itemId:'minecraft:diamond',quantity:1,requestId:randomUUID()};const trade=await buyItem(input,tx);const sourceId=playerId+'/'+input.requestId,id=randomUUID();
  const restored=await run('trade_refund',{sourceId},id);assert.equal(restored.balance,100);assert.equal(restored.sourceId,sourceId);assert.equal((await run('trade_refund',{sourceId},id)).replayed,true);await assert.rejects(run('trade_refund',{sourceId}),/이미 환불/);assert.ok(trade.totalPrice>0);
 });
+
+test('blank policy IDs generate once and replay their original ID',async()=>{
+ const requestId=randomUUID();const first=await run('reward_save',{id:'',amount:17,cooldownSeconds:0},requestId);
+ assert.match(first.id,/^[0-9A-F]{16}$/);assert.equal((await run('reward_save',{id:'',amount:17,cooldownSeconds:0},requestId)).id,first.id);
+ const other=await run('reward_save',{amount:18,cooldownSeconds:0});assert.notEqual(other.id,first.id);
+ assert.equal((await adminRead(actor,'rewards',{},db)).rows.filter(x=>x.id===first.id).length,1);
+ const delivery=await run('delivery_save',{id:'',title:'자동 의뢰',itemId:'minecraft:wheat',quantity:2,reward:4,cooldownSeconds:0});assert.match(delivery.id,/^delivery_[0-9a-f]{32}$/);
+});
+test('ID lookup pages, literal search and normalized player rows',async()=>{
+ for(let i=0;i<13;i++){const id=randomUUID();await db.query('INSERT INTO players(id,username) VALUES($1,$2)',[id,'Lookup_'+String(i).padStart(2,'0')]);}
+ const params={operation:'wallet_add',field:'playerId',search:'Lookup_',pageSize:5};
+ const first=await adminRead(actor,'lookup',params,db),last=await adminRead(actor,'lookup',{...params,page:2},db);
+ assert.equal(first.total,13);assert.equal(first.rows.length,5);assert.equal(first.hasMore,true);assert.equal(last.rows.length,3);assert.equal(last.hasMore,false);
+ assert.ok(first.rows.every(r=>r.occurredAt&&r.playerName&&r.value===r.playerId));
+ assert.equal((await adminRead(actor,'lookup',{...params,search:'Lookup_%'},db)).total,0);
+ await assert.rejects(adminRead(actor,'lookup',{...params,pageSize:100},db),/페이지/);
+});
+test('lookup authorizes original operation and cannot switch arbitrary fields or tables',async()=>{
+ const operator=randomUUID();await db.query('INSERT INTO admin_permissions VALUES($1,$2)',[operator,JSON.stringify(['logs'])]);
+ await assert.rejects(adminRead(operator,'lookup',{operation:'wallet_add',field:'playerId'},db),/관리 권한/);
+ await assert.rejects(adminRead(actor,'lookup',{operation:'wallet_add',field:'amount',kind:'purchases'},db),/검색할 수 없는/);
+ const kinds=[['reward_save','id'],['delivery_save','id'],['mail_cancel','id'],['delivery_cancel','id'],['project_refund','id'],['event_end','id'],['trade_refund','sourceId'],['permission_set','actorId']];
+ for(const [operation,field] of kinds){const data=await adminRead(actor,'lookup',{operation,field},db);assert.ok(Array.isArray(data.rows));assert.ok(Number.isInteger(data.total));}
+});
+test('refund picker excludes already compensated receipts and supplies exact identity',async()=>{
+ const {buyItem}=await import('../src/modules/shop/shop.service.js');const playerId=randomUUID();await run('wallet_add',{playerId,amount:100});const requestId=randomUUID();await buyItem({playerId,itemId:'minecraft:diamond',quantity:1,requestId},tx);
+ const params={operation:'trade_refund',field:'sourceId',search:requestId};const data=await adminRead(actor,'lookup',params,db);
+ assert.equal(data.rows[0].value,playerId+'/'+requestId);assert.ok(data.rows[0].occurredAt);assert.equal(data.rows[0].playerId,playerId);
+ await run('trade_refund',{sourceId:data.rows[0].value});assert.equal((await adminRead(actor,'lookup',params,db)).total,0);
+});
+test('Korean permission labels retain their canonical authorization scopes',async()=>{
+ const operator=randomUUID();await run('permission_set',{actorId:operator,permissions:'지갑, 상점'});
+ const permissions=(await db.query('SELECT permissions FROM admin_permissions WHERE actor_id=$1',[operator])).rows[0].permissions;
+ assert.deepEqual(permissions,['wallet','shop']);assert.ok(await adminRead(operator,'players',{},db));await assert.rejects(adminRead(operator,'rewards',{},db),/관리 권한/);
+});

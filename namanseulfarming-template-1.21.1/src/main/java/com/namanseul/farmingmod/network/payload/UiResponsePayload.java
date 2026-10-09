@@ -109,7 +109,7 @@ public record UiResponsePayload(
     }
 
     public static UiResponsePayload failed(String requestId, UiScreenType screenType, UiAction action, String error) {
-        return new UiResponsePayload(requestId, false, screenType, action, null, null, error);
+        return new UiResponsePayload(requestId, false, screenType, action, null, null, com.namanseul.farmingmod.network.UiKoreanText.error(error));
     }
 
     @Override

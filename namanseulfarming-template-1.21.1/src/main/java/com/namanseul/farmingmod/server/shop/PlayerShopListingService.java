@@ -224,7 +224,7 @@ public final class PlayerShopListingService {
         mergeReasonTag(target, "player_listing");
         String summary = readString(target, "pricingSummary");
         if (summary == null || summary.isBlank()) {
-            target.addProperty("pricingSummary", "Registered by player. Cancel sell to return original items to inventory.");
+            target.addProperty("pricingSummary", "내가 등록한 상품입니다. 등록을 취소하면 원래 아이템이 인벤토리로 돌아옵니다.");
         }
     }
 
@@ -272,7 +272,7 @@ public final class PlayerShopListingService {
             json.addProperty("sellPrice", unitPrice);
             json.addProperty("currentBuyPrice", unitPrice);
             json.addProperty("currentSellPrice", unitPrice);
-            json.addProperty("pricingSummary", "Registered by player. Cancel sell to return original items to inventory.");
+            json.addProperty("pricingSummary", "내가 등록한 상품입니다. 등록을 취소하면 원래 아이템이 인벤토리로 돌아옵니다.");
 
             JsonArray reasonTags = new JsonArray();
             reasonTags.add("player_listing");

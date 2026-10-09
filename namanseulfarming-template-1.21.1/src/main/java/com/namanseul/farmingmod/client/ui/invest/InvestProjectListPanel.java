@@ -148,7 +148,7 @@ public final class InvestProjectListPanel {
     private static String buildSummaryLine(InvestProjectViewData project) {
         double ratio = project.progressPercent() == null ? 0.0 : project.progressPercent();
         int percent = (int) Math.round(ratio <= 1.0 ? ratio * 100.0 : ratio);
-        String status = safe(project.status());
+        String status = com.namanseul.farmingmod.network.UiKoreanText.value(project.status());
         return status + " | " + percent + "% | " + safeNumber(project.currentAmount()) + "/" + safeNumber(project.targetAmount());
     }
 

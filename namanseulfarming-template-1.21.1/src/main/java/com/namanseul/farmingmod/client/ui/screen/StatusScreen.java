@@ -255,8 +255,8 @@ public final class StatusScreen extends BaseTabbedScreen {
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(560, width - 20);
-        frameHeight = Math.min(360, height - 36);
+        frameWidth = Math.min(520, width - 20);
+        frameHeight = Math.min(330, height - 36);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 

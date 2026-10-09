@@ -40,17 +40,17 @@ public final class InvestDetailPanelView {
             return lines;
         }
 
-        lines.add(Component.literal("projectId: " + safe(project.projectId())));
-        lines.add(Component.literal("name: " + safe(project.name())));
-        lines.add(Component.literal("status: " + safe(project.status())));
-        lines.add(Component.literal("currentAmount: " + safeNumber(project.currentAmount())));
-        lines.add(Component.literal("targetAmount: " + safeNumber(project.targetAmount())));
-        lines.add(Component.literal("remainingAmount: " + safeNumber(project.remainingAmount())));
-        lines.add(Component.literal("progressPercent: " + safePercent(project.progressPercent())));
-        lines.add(Component.literal("contributionAmount: " + safeDecimal(project.contributionAmount())));
-        lines.add(Component.literal("contributors: " + safeNumber(project.contributors())));
+        lines.add(Component.literal("프로젝트 ID: " + safe(project.projectId())));
+        lines.add(Component.literal("이름: " + safe(project.name())));
+        lines.add(Component.literal("상태: " + com.namanseul.farmingmod.network.UiKoreanText.value(project.status())));
+        lines.add(Component.literal("현재 기여금: " + safeNumber(project.currentAmount())));
+        lines.add(Component.literal("목표 금액: " + safeNumber(project.targetAmount())));
+        lines.add(Component.literal("남은 금액: " + safeNumber(project.remainingAmount())));
+        lines.add(Component.literal("진행률: " + safePercent(project.progressPercent())));
+        lines.add(Component.literal("내 기여금: " + safeDecimal(project.contributionAmount())));
+        lines.add(Component.literal("참여자 수: " + safeNumber(project.contributors())));
         if (project.description() != null && !project.description().isBlank()) {
-            lines.add(Component.literal("description: " + project.description()));
+            lines.add(Component.literal("설명: " + project.description()));
         }
         return lines;
     }

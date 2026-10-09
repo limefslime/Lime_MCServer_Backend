@@ -3,9 +3,9 @@ set -euo pipefail
 bundle=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 backend=/srv/mc/backend
 server=/srv/mc/server
-backup=/srv/mc/backups/economy-1.1.0-$(date +%Y%m%d-%H%M%S)
+backup=/srv/mc/backups/economy-1.1.1-$(date +%Y%m%d-%H%M%S)
 [[ -f "$backend/.env" && -f "$server/run.sh" && -d "$server/mods" ]] || { echo '기존 백엔드·서버 경로를 확인하세요.'; exit 1; }
-[[ -f "$bundle/Backend.zip" && -f "$bundle/namanseulfarming-1.1.0.jar" ]] || exit 1
+[[ -f "$bundle/Backend.zip" && -f "$bundle/namanseulfarming-1.1.1.jar" ]] || exit 1
 command -v pg_dump >/dev/null || { echo 'pg_dump가 필요합니다. PostgreSQL 설치 상태를 확인하세요.'; exit 1; }
 if [[ -d /etc/postgresql/16/minecraft ]]; then pg_ctlcluster 16 minecraft start || pg_ctlcluster 16 minecraft status; fi
 install -d -m 700 "$backup" "$backup/old-mods"
@@ -37,7 +37,7 @@ if [[ -d "$backup/config" ]]; then cp -a "$backup/config/." "$backend/config/"; 
 (cd "$backend" && npm ci && npm run migrate:admin)
 shopt -s nullglob
 for jar in "$server"/mods/namanseulfarming*.jar; do mv "$jar" "$backup/old-mods/"; done
-cp "$bundle/namanseulfarming-1.1.0.jar" "$server/mods/"
+cp "$bundle/namanseulfarming-1.1.1.jar" "$server/mods/"
 chmod 600 "$backend/.env"
 (cd "$backend" && nohup npm start > admin-update-launch.log 2>&1 < /dev/null &)
 healthy=0

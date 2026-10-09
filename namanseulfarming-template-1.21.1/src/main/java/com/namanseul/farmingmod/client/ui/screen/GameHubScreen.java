@@ -20,12 +20,14 @@ public final class GameHubScreen extends BaseGameScreen {
     private static final String MENU_INVEST = "invest";
     private static final String MENU_REGION = "region";
 
-    private static final int MENU_BUTTON_HEIGHT = 22;
-    private static final int MENU_BUTTON_GAP = 5;
+    private static final int MENU_BUTTON_HEIGHT = 20;
+    private static final int MENU_BUTTON_GAP = 4;
     private static final String HUB_MENU_ERROR_MESSAGE = "메뉴를 열지 못했습니다.";
 
     private final Map<String, HubTabView> menuViews = new LinkedHashMap<>();
     private final Map<String, Button> menuButtons = new LinkedHashMap<>();
+
+    private boolean adminVisible;
 
     private int frameX;
     private int frameY;
@@ -105,8 +107,8 @@ public final class GameHubScreen extends BaseGameScreen {
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(340, width - 20);
-        frameHeight = Math.min(300, height - 24);
+        frameWidth = Math.min(300, width - 20);
+        frameHeight = Math.min(245, height - 24);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 
@@ -126,12 +128,14 @@ public final class GameHubScreen extends BaseGameScreen {
         int baseX = menuX + (menuWidth - buttonWidth) / 2;
         int baseY = menuY + 10;
 
+        adminVisible = minecraft.player != null && minecraft.player.hasPermissions(2);
         int index = 0;
         for (Map.Entry<String, HubTabView> entry : menuViews.entrySet()) {
             int x = baseX;
             int y = baseY + index * (MENU_BUTTON_HEIGHT + MENU_BUTTON_GAP);
 
             final String menuId = entry.getKey();
+            if (menuId.equals("admin") && !adminVisible) continue;
             Button button = addRenderableWidget(UiButton.create(
                     entry.getValue().menuLabel(),
                     x,
@@ -145,7 +149,15 @@ public final class GameHubScreen extends BaseGameScreen {
         }
     }
 
+    @Override
+    public void tick() {
+        super.tick();
+        boolean allowed = minecraft.player != null && minecraft.player.hasPermissions(2);
+        if (allowed != adminVisible) initMenuButtons();
+    }
+
     private void openMenu(String menuId) {
+        if (menuId.equals("admin") && (minecraft.player == null || !minecraft.player.hasPermissions(2))) return;
         HubTabView menuView = menuViews.get(menuId);
         if (menuView == null) {
             return;

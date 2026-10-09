@@ -362,6 +362,8 @@ public final class StatusJsonParser {
         if (raw == null || raw.isBlank()) {
             return "";
         }
+        String translated = com.namanseul.farmingmod.network.UiKoreanText.value(raw.trim());
+        if (!translated.equals(raw.trim())) return translated;
         String normalized = raw.trim().replace('_', ' ').replace('-', ' ');
         if (normalized.isBlank()) {
             return "";

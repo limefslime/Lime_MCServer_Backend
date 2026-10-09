@@ -91,7 +91,7 @@ public final class MailListPanel {
 
             MailViewData mail = entries.get(i);
             String titlePrefix = mail.recent() ? "[NEW] " : "";
-            String titleText = titlePrefix + safe(mail.title());
+            String titleText = titlePrefix + com.namanseul.farmingmod.network.UiKoreanText.value(mail.title());
             String summaryText = buildSummaryLine(mail);
 
             UiTextRender.drawEllipsized(graphics, font, titleText, x + 6, rowY + 2, width - 12, 0xFFFFFF);
@@ -111,7 +111,7 @@ public final class MailListPanel {
         } else {
             reward = "reward:" + (mail.rewardAmount() == null ? "gold" : mail.rewardAmount());
         }
-        return safe(mail.mailType()) + " | " + reward + " | " + claimed;
+        return com.namanseul.farmingmod.network.UiKoreanText.value(mail.mailType()) + " | " + reward + " | " + claimed;
     }
 
     private void renderHeader(GuiGraphics graphics, Font font) {

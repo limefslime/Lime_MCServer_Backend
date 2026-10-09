@@ -41,23 +41,23 @@ public final class MailDetailPanelView {
             return lines;
         }
 
-        lines.add(Component.literal("title: " + safe(mail.title())));
-        lines.add(Component.literal("mailId: " + safe(mail.id())));
-        lines.add(Component.literal("mailType: " + safe(mail.mailType())));
-        lines.add(Component.literal("claimed: " + mail.claimed()));
-        lines.add(Component.literal("hasReward: " + mail.hasReward()));
-        lines.add(Component.literal("rewardAmount: " + numberOrDash(mail.rewardAmount())));
-        lines.add(Component.literal("rewardType: " + safe(mail.rewardType())));
-        lines.add(Component.literal("sentAt: " + safe(mail.createdAtText())));
+        lines.add(Component.literal("제목: " + com.namanseul.farmingmod.network.UiKoreanText.value(mail.title())));
+        lines.add(Component.literal("우편 ID: " + safe(mail.id())));
+        lines.add(Component.literal("우편 종류: " + com.namanseul.farmingmod.network.UiKoreanText.value(mail.mailType())));
+        lines.add(Component.literal("수령 완료: " + (mail.claimed()?"예":"아니오")));
+        lines.add(Component.literal("보상 포함: " + (mail.hasReward()?"예":"아니오")));
+        lines.add(Component.literal("지급 금액: " + numberOrDash(mail.rewardAmount())));
+        lines.add(Component.literal("보상 종류: " + com.namanseul.farmingmod.network.UiKoreanText.value(mail.rewardType())));
+        lines.add(Component.literal("발송 시각: " + safe(mail.createdAtText())));
         if (mail.claimedAtText() != null && !mail.claimedAtText().isBlank()) {
-            lines.add(Component.literal("claimedAt: " + mail.claimedAtText()));
+            lines.add(Component.literal("수령 시각: " + mail.claimedAtText()));
         }
         if (mail.itemRewardItemId() != null && !mail.itemRewardItemId().isBlank()) {
-            lines.add(Component.literal("itemReward: " + mail.itemRewardItemId()
+            lines.add(Component.literal("아이템 보상: " + mail.itemRewardItemId()
                     + " x" + numberOrDash(mail.itemRewardQuantity())));
         }
 
-        lines.add(Component.literal("message: " + safe(mail.message())));
+        lines.add(Component.literal("내용: " + safe(mail.message())));
         return lines;
     }
 

@@ -1082,8 +1082,8 @@ public final class ShopScreen extends BaseGameScreen {
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(640, width - 20);
-        frameHeight = Math.min(372, height - 30);
+        frameWidth = Math.min(580, width - 20);
+        frameHeight = Math.min(340, height - 30);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 

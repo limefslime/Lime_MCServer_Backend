@@ -1,6 +1,6 @@
 {
   "name": "minecraft-backend",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "main": "src/app.js",
   "scripts": {
     "dev": "node src/app.js",

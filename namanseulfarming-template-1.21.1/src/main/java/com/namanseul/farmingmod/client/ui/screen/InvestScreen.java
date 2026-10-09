@@ -211,8 +211,8 @@ public final class InvestScreen extends BaseGameScreen {
     }
 
     private void recalcLayout() {
-        frameWidth = Math.min(580, width - 20);
-        frameHeight = Math.min(360, height - 36);
+        frameWidth = Math.min(540, width - 20);
+        frameHeight = Math.min(330, height - 36);
         frameX = (width - frameWidth) / 2;
         frameY = (height - frameHeight) / 2;
 

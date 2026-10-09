@@ -45,20 +45,20 @@ public final class MailRewardPanelView {
             return lines;
         }
 
-        lines.add(Component.literal("reward state: " + (selectedMail.hasReward() ? "claimable" : "notification")));
-        lines.add(Component.literal("rewardType: " + safe(selectedMail.rewardType())));
-        lines.add(Component.literal("rewardAmount: " + numberOrDash(selectedMail.rewardAmount())));
+        lines.add(Component.literal("보상 상태: " + (selectedMail.hasReward() ? "수령 가능" : "알림 전용")));
+        lines.add(Component.literal("보상 종류: " + com.namanseul.farmingmod.network.UiKoreanText.value(selectedMail.rewardType())));
+        lines.add(Component.literal("지급 금액: " + numberOrDash(selectedMail.rewardAmount())));
         if (selectedMail.itemRewardItemId() != null) {
-            lines.add(Component.literal("itemReward: " + selectedMail.itemRewardItemId()
+            lines.add(Component.literal("아이템 보상: " + selectedMail.itemRewardItemId()
                     + " x" + numberOrDash(selectedMail.itemRewardQuantity())));
         } else {
-            lines.add(Component.literal("itemReward: -"));
+            lines.add(Component.literal("아이템 보상: 없음"));
         }
 
         if (lastClaim != null) {
-            lines.add(Component.literal("last claim: " + (lastClaim.claimed() ? "success" : "failed")));
-            lines.add(Component.literal("last rewardAmount: " + numberOrDash(lastClaim.rewardAmount())));
-            lines.add(Component.literal("balanceAfter: " + numberOrDash(lastClaim.balanceAfter())));
+            lines.add(Component.literal("최근 수령: " + (lastClaim.claimed() ? "완료" : "실패")));
+            lines.add(Component.literal("최근 지급 금액: " + numberOrDash(lastClaim.rewardAmount())));
+            lines.add(Component.literal("수령 후 잔액: " + numberOrDash(lastClaim.balanceAfter())));
         }
 
         return lines;
